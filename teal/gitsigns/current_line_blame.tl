@@ -27,6 +27,7 @@ M.reset = function(bufnr: integer)
   api.nvim_buf_del_extmark(bufnr, namespace, 1)
 end
 
+-- Update function, must be called in async context
 M.update = void(function()
   M.reset()
 
@@ -47,6 +48,13 @@ M.update = void(function()
   scheduler()
 
   M.reset(bufnr)
+
+  local lnum1 = api.nvim_win_get_cursor(0)[1]
+  if lnum ~= lnum1 then
+    -- Cursor has moved during events; abort
+    return
+  end
+
   api.nvim_buf_set_extmark(bufnr, namespace, lnum-1, 0, {
     id = 1,
     virt_text = config.current_line_blame_formatter(

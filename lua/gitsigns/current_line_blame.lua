@@ -27,6 +27,7 @@ M.reset = function(bufnr)
    api.nvim_buf_del_extmark(bufnr, namespace, 1)
 end
 
+
 M.update = void(function()
    M.reset()
 
@@ -47,6 +48,13 @@ M.update = void(function()
    scheduler()
 
    M.reset(bufnr)
+
+   local lnum1 = api.nvim_win_get_cursor(0)[1]
+   if lnum ~= lnum1 then
+
+      return
+   end
+
    api.nvim_buf_set_extmark(bufnr, namespace, lnum - 1, 0, {
       id = 1,
       virt_text = config.current_line_blame_formatter(
