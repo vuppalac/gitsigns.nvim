@@ -232,7 +232,7 @@ local update0 = function(bufnr, bcache)
    end
 
    bcache.hunks = run_diff(bcache.compare_text, buftext,
-   config.diff_opts.algorithm, config.diff_opts.indent_heuristic)
+   config.diff_opts.algorithm, config.diff_opts.indent_heuristic, true)
 
    scheduler()
    if gs_hunks.compare_heads(bcache.hunks, old_hunks) then

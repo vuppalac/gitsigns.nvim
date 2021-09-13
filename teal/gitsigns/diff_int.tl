@@ -1,28 +1,67 @@
 local create_hunk = require("gitsigns.hunks").create_hunk
 local Hunk        = require('gitsigns.hunks').Hunk
 
+local wrap = require('plenary.async.async').wrap
+
 local M = {}
 
 local type DiffResult = {integer, integer, integer, integer}
 
-local run_diff_xdl: function({string}, {string}, diff_algo: string, indent_heuristic: boolean): {DiffResult}
+local type DiffFun = function({string}, {string}, diff_algo: string, indent_heuristic: boolean): {DiffResult}
+
+local run_diff_xdl: DiffFun
+local run_diff_xdl_async: DiffFun
 
 if vim.diff then
-  run_diff_xdl = function(fa: {string}, fb: {string}, algorithm: string, indent_heuristic: boolean): {DiffResult}
+  run_diff_xdl = function(
+      fa: {string}, fb: {string},
+      algorithm: string, indent_heuristic: boolean
+    ): {DiffResult}
+
     local a = vim.tbl_isempty(fa) and '' or table.concat(fa, '\n')..'\n'
     local b = vim.tbl_isempty(fb) and '' or table.concat(fb, '\n')..'\n'
+
     return vim.diff(a, b, {
       result_type      = 'indices',
       algorithm        = algorithm,
       indent_heuristic = indent_heuristic
     })
   end
+
+  if vim.is_thread then
+    run_diff_xdl_async = wrap(function(
+        fa: {string}, fb: {string},
+        algorithm: string, indent_heuristic: boolean,
+        callback: function({DiffResult})
+      ): {DiffResult}
+
+      local a = vim.tbl_isempty(fa) and '' or table.concat(fa, '\n')..'\n'
+      local b = vim.tbl_isempty(fb) and '' or table.concat(fb, '\n')..'\n'
+
+      vim.loop.new_work(function(
+        a0: string, b0: string,
+        algorithm0: string, indent_heuristic0: boolean): any
+        return vim.mpack.pack(vim.diff(a0, b0, {
+          result_type      = 'indices',
+          algorithm        = algorithm0,
+          indent_heuristic = indent_heuristic0
+        }))
+      end, function(r: string)
+        callback(vim.mpack.unpack(r) as {DiffResult})
+      end):queue(a, b, algorithm, indent_heuristic)
+    end, 5)
+  end
 else
   run_diff_xdl = require('gitsigns.diff_int.xdl_diff_ffi')
 end
 
-function M.run_diff(fa: {string}, fb: {string}, diff_algo: string, indent_heuristic: boolean): {Hunk}
-  local results = run_diff_xdl(fa, fb, diff_algo, indent_heuristic)
+function M.run_diff(fa: {string}, fb: {string}, diff_algo: string, indent_heuristic: boolean, async: boolean): {Hunk}
+  local results: {DiffResult}
+  if async and run_diff_xdl_async then
+    results = run_diff_xdl_async(fa, fb, diff_algo, indent_heuristic)
+  else
+    results = run_diff_xdl(fa, fb, diff_algo, indent_heuristic)
+  end
 
   local hunks: {Hunk} = {}
 

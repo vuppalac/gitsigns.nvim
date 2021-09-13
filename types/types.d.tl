@@ -347,6 +347,12 @@ global record vim
     new_pipe: function(boolean): Pipe
     shutdown: function(any, function)
     close: function(any, function)
+
+    record WorkCtx
+      queue: function(WorkCtx, ...:any)
+    end
+
+    new_work: function(function, function): WorkCtx
   end
 
   in_fast_event: function(): boolean
@@ -412,4 +418,10 @@ global record vim
 
   wait: function(number, function, number, boolean)
 
+  record mpack
+    pack: function(any): string
+    unpack: function(string): any
+  end
+
+  is_thread: function(): boolean
 end

@@ -220,7 +220,7 @@ local update0 = function(bufnr: integer, bcache: CacheEntry)
 
   -- Make sure these requires are done in the main event.
   -- See https://github.com/neovim/neovim/issues/15147
-  local run_diff: function({string}, {string}, string, boolean): {Hunk}
+  local run_diff: function({string}, {string}, string, boolean, boolean): {Hunk}
   if config.diff_opts.internal then
     run_diff = require('gitsigns.diff_int').run_diff
   else
@@ -232,7 +232,7 @@ local update0 = function(bufnr: integer, bcache: CacheEntry)
   end
 
   bcache.hunks = run_diff(bcache.compare_text, buftext,
-    config.diff_opts.algorithm, config.diff_opts.indent_heuristic)
+    config.diff_opts.algorithm, config.diff_opts.indent_heuristic, true)
 
   scheduler()
   if gs_hunks.compare_heads(bcache.hunks, old_hunks) then

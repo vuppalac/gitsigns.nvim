@@ -1,28 +1,67 @@
 local create_hunk = require("gitsigns.hunks").create_hunk
 local Hunk = require('gitsigns.hunks').Hunk
 
+local wrap = require('plenary.async.async').wrap
+
 local M = {}
 
 local DiffResult = {}
 
+local DiffFun = {}
+
 local run_diff_xdl
+local run_diff_xdl_async
 
 if vim.diff then
-   run_diff_xdl = function(fa, fb, algorithm, indent_heuristic)
+   run_diff_xdl = function(
+      fa, fb,
+      algorithm, indent_heuristic)
+
+
       local a = vim.tbl_isempty(fa) and '' or table.concat(fa, '\n') .. '\n'
       local b = vim.tbl_isempty(fb) and '' or table.concat(fb, '\n') .. '\n'
+
       return vim.diff(a, b, {
          result_type = 'indices',
          algorithm = algorithm,
          indent_heuristic = indent_heuristic,
       })
    end
+
+   if vim.is_thread then
+      run_diff_xdl_async = wrap(function(
+         fa, fb,
+         algorithm, indent_heuristic,
+         callback)
+
+
+         local a = vim.tbl_isempty(fa) and '' or table.concat(fa, '\n') .. '\n'
+         local b = vim.tbl_isempty(fb) and '' or table.concat(fb, '\n') .. '\n'
+
+         vim.loop.new_work(function(
+            a0, b0,
+            algorithm0, indent_heuristic0)
+            return vim.mpack.pack(vim.diff(a0, b0, {
+               result_type = 'indices',
+               algorithm = algorithm0,
+               indent_heuristic = indent_heuristic0,
+            }))
+         end, function(r)
+            callback(vim.mpack.unpack(r))
+         end):queue(a, b, algorithm, indent_heuristic)
+      end, 5)
+   end
 else
    run_diff_xdl = require('gitsigns.diff_int.xdl_diff_ffi')
 end
 
-function M.run_diff(fa, fb, diff_algo, indent_heuristic)
-   local results = run_diff_xdl(fa, fb, diff_algo, indent_heuristic)
+function M.run_diff(fa, fb, diff_algo, indent_heuristic, async)
+   local results
+   if async and run_diff_xdl_async then
+      results = run_diff_xdl_async(fa, fb, diff_algo, indent_heuristic)
+   else
+      results = run_diff_xdl(fa, fb, diff_algo, indent_heuristic)
+   end
 
    local hunks = {}
 
