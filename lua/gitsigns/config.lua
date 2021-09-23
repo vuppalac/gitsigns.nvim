@@ -577,6 +577,14 @@ M.schema = {
     ]],
    },
 
+   git_path = {
+      type = 'string',
+      default = 'git',
+      description = [[
+      Path to the git binary location
+    ]],
+   },
+
    debug_mode = {
       type = 'boolean',
       default = false,

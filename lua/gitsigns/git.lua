@@ -8,6 +8,8 @@ local subprocess = require('gitsigns.subprocess')
 local gs_hunks = require("gitsigns.hunks")
 local Hunk = gs_hunks.Hunk
 
+local config = require('gitsigns.config').config
+
 local uv = vim.loop
 local startswith = vim.startswith
 
@@ -130,7 +132,7 @@ local JobSpec = subprocess.JobSpec
 
 M.command = wrap(function(args, spec, callback)
    spec = spec or {}
-   spec.command = spec.command or 'git'
+   spec.command = spec.command or config.git_path or 'git'
    spec.args = spec.command == 'git' and { '--no-pager', unpack(args) } or args
    subprocess.run_job(spec, function(_, _, stdout, stderr)
       if not spec.supress_stderr then
@@ -193,7 +195,7 @@ M.get_repo_info = function(path, cmd)
    local results = M.command({
       'rev-parse', '--show-toplevel', git_dir_opt, '--abbrev-ref', 'HEAD',
    }, {
-      command = cmd or 'git',
+      command = cmd or config.git_path,
       supress_stderr = true,
       cwd = path,
    })
@@ -261,7 +263,7 @@ Repo.new = function(dir)
    if M.enable_yadm and not self.gitdir then
       if vim.startswith(dir, os.getenv('HOME')) and
          #M.command({ 'ls-files', dir }, { command = 'yadm' }) ~= 0 then
-         self.toplevel, self.gitdir, self.abbrev_head = 
+         self.toplevel, self.gitdir, self.abbrev_head =
          M.get_repo_info(dir, 'yadm')
       end
    end
@@ -420,7 +422,7 @@ Obj.new = function(file)
       return self
    end
 
-   self.relpath, self.object_name, self.mode_bits, self.has_conflicts = 
+   self.relpath, self.object_name, self.mode_bits, self.has_conflicts =
    self:file_info()
 
    return self
