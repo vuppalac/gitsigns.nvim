@@ -132,7 +132,7 @@ local JobSpec = subprocess.JobSpec
 
 M.command = wrap(function(args, spec, callback)
    spec = spec or {}
-   spec.command = spec.command or config.git_path or 'git'
+   spec.command = config.git_path or spec.command or 'git'
    spec.args = spec.command == 'git' and { '--no-pager', unpack(args) } or args
    subprocess.run_job(spec, function(_, _, stdout, stderr)
       if not spec.supress_stderr then
@@ -195,7 +195,7 @@ M.get_repo_info = function(path, cmd)
    local results = M.command({
       'rev-parse', '--show-toplevel', git_dir_opt, '--abbrev-ref', 'HEAD',
    }, {
-      command = cmd or config.git_path,
+      command = config.git_path or cmd,
       supress_stderr = true,
       cwd = path,
    })
