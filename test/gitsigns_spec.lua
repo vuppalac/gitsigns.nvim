@@ -72,10 +72,10 @@ describe('gitsigns', function()
     check { status = {}, signs = {} }
   end)
 
-  it('index watcher works on a fresh repo', function()
+  it('gitdir watcher works on a fresh repo', function()
     screen:try_resize(20,6)
     setup_test_repo(true)
-    config.watch_index = {interval = 5}
+    config.watch_gitdir = {interval = 5}
     setup_gitsigns(config)
     edit(test_file)
 
@@ -86,8 +86,7 @@ describe('gitsigns', function()
         p'run_job: git .* config user.name',
         'run_job: git --no-pager rev-parse --show-toplevel --absolute-git-dir --abbrev-ref HEAD',
         p('run_job: git .* ls%-files %-%-stage %-%-others %-%-exclude%-standard '..test_file),
-        'watch_index(1): Watching index',
-        'watcher_cb(1): Index update error: ENOENT',
+        'watch_gitdir(1): Watching git dir',
         p'run_job: git .* show :0:dummy.txt',
         'update(1): updates: 1, jobs: 7'
       })
@@ -238,8 +237,8 @@ describe('gitsigns', function()
             head = '@@ -1,1 +1,2 @@',
             type = 'change',
             lines = { '-This', '+line1This', '+line2' },
-            added   = { count = 2, start = 1 },
-            removed = { count = 1, start = 1 },
+            added   = { count = 2, start = 1, lines = { 'line1This', 'line2' } },
+            removed = { count = 1, start = 1, lines = { 'This'} },
           }},
           exec_lua[[return require'gitsigns'.get_hunks()]]
         )
@@ -263,10 +262,6 @@ describe('gitsigns', function()
     it('handled deprecated fields', function()
       config.current_line_blame_delay = 100
       setup_gitsigns(config)
-      screen:expect{messages = { {
-        content = { { "current_line_blame_delay is now deprecated, please use current_line_blame_opts.delay", 10 } },
-        kind = ""
-      } } }
       eq(100, exec_lua([[return package.loaded['gitsigns.config'].config.current_line_blame_opts.delay]]))
     end)
   end)
@@ -480,7 +475,7 @@ describe('gitsigns', function()
           p"run_job: git .* config user.name",
           'run_job: git --no-pager rev-parse --show-toplevel --absolute-git-dir --abbrev-ref HEAD',
           p'run_job: git .* ls%-files .*',
-          'watch_index(1): Watching index',
+          'watch_gitdir(1): Watching git dir',
           p'run_job: git .* show :0:newfile.txt'
         }
 
