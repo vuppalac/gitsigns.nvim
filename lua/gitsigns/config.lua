@@ -104,6 +104,7 @@ local M = {Config = {DiffOpts = {}, SignsConfig = {}, watch_gitdir = {}, current
 
 
 
+
 M.config = {}
 
 M.schema = {
@@ -612,10 +613,18 @@ M.schema = {
    },
 
    git_path = {
-      type = 'string',
-      default = 'git',
-      description = [[
+       type = 'string',
+       default = 'git',
+       description = [[
       Path to the git binary location
+    ]]
+   },
+
+   _blame_cache = {
+      type = 'boolean',
+      default = false,
+      description = [[
+      Cache blame results for current_line_blame
     ]],
    },
 
