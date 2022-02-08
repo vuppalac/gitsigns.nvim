@@ -45,28 +45,6 @@ of the default settings:
       numhl      = false, -- Toggle with `:Gitsigns toggle_numhl`
       linehl     = false, -- Toggle with `:Gitsigns toggle_linehl`
       word_diff  = false, -- Toggle with `:Gitsigns toggle_word_diff`
-      keymaps = {
-        -- Default keymap options
-        noremap = true,
-
-        ['n ]c'] = { expr = true, "&diff ? ']c' : '<cmd>Gitsigns next_hunk<CR>'"},
-        ['n [c'] = { expr = true, "&diff ? '[c' : '<cmd>Gitsigns prev_hunk<CR>'"},
-
-        ['n <leader>hs'] = '<cmd>Gitsigns stage_hunk<CR>',
-        ['v <leader>hs'] = ':Gitsigns stage_hunk<CR>',
-        ['n <leader>hu'] = '<cmd>Gitsigns undo_stage_hunk<CR>',
-        ['n <leader>hr'] = '<cmd>Gitsigns reset_hunk<CR>',
-        ['v <leader>hr'] = ':Gitsigns reset_hunk<CR>',
-        ['n <leader>hR'] = '<cmd>Gitsigns reset_buffer<CR>',
-        ['n <leader>hp'] = '<cmd>Gitsigns preview_hunk<CR>',
-        ['n <leader>hb'] = '<cmd>lua require"gitsigns".blame_line{full=true}<CR>',
-        ['n <leader>hS'] = '<cmd>Gitsigns stage_buffer<CR>',
-        ['n <leader>hU'] = '<cmd>Gitsigns reset_buffer_index<CR>',
-
-        -- Text objects
-        ['o ih'] = ':<C-U>Gitsigns select_hunk<CR>',
-        ['x ih'] = ':<C-U>Gitsigns select_hunk<CR>'
-      },
       watch_gitdir = {
         interval = 1000,
         follow_files = true
@@ -437,44 +415,23 @@ signs                                                  *gitsigns-config-signs*
         • `show_count` to enable showing count of hunk, e.g. number of deleted
           lines.
 
-      Note if `hl`, `numhl` or `linehl` use a `GitSigns*` highlight and it is
-      not defined, it will be automatically derived by searching for other
-      defined highlights in the following order:
+      Note if a highlight is not defined, it will be automatically derived by
+      searching for other defined highlights in the following order:
         • `GitGutter*`
         • `Signify*`
         • `Diff*Gutter`
         • `diff*`
         • `Diff*`
 
-      For example if `signs.add.hl = GitSignsAdd` and `GitSignsAdd` is not
-      defined but `GitGutterAdd` is defined, then `GitSignsAdd` will be linked
-      to `GitGutterAdd`.
+      For example if `GitSignsAdd` is not defined but `GitGutterAdd` is defined,
+      then `GitSignsAdd` will be linked to `GitGutterAdd`.
 
 keymaps                                              *gitsigns-config-keymaps*
-      Type: `table`
-      Default: >
-        {
-          -- Default keymap options
-          noremap = true,
+   DEPRECATED
+      config.keymaps is now deprecated. Please define mappings in config.on_attach() instead.
 
-          ['n ]c'] = { expr = true, "&diff ? ']c' : '<cmd>Gitsigns next_hunk<CR>'"},
-          ['n [c'] = { expr = true, "&diff ? '[c' : '<cmd>Gitsigns prev_hunk<CR>'"},
+      Type: `table`, Default: `{}`
 
-          ['n <leader>hs'] = '<cmd>Gitsigns stage_hunk<CR>',
-          ['v <leader>hs'] = ':Gitsigns stage_hunk<CR>',
-          ['n <leader>hu'] = '<cmd>Gitsigns undo_stage_hunk<CR>',
-          ['n <leader>hr'] = '<cmd>Gitsigns reset_hunk<CR>',
-          ['v <leader>hr'] = ':Gitsigns reset_hunk<CR>',
-          ['n <leader>hR'] = '<cmd>Gitsigns reset_buffer<CR>',
-          ['n <leader>hp'] = '<cmd>Gitsigns preview_hunk<CR>',
-          ['n <leader>hb'] = '<cmd>lua require"gitsigns".blame_line{full=true}<CR>',
-          ['n <leader>hS'] = '<cmd>Gitsigns stage_buffer<CR>',
-          ['n <leader>hU'] = '<cmd>Gitsigns reset_buffer_index<CR>',
-
-          ['o ih'] = ':<C-U>Gitsigns select_hunk<CR>',
-          ['x ih'] = ':<C-U>Gitsigns select_hunk<CR>'
-        }
-<
       Keymaps to set up when attaching to a buffer.
 
       Each key in the table defines the mode and key (whitespace delimited)
@@ -589,6 +546,8 @@ diff_opts                                          *gitsigns-config-diff_opts*
         • indent_heuristic: string
             Use the indent heuristic for the internal
             diff library.
+        • vertical: boolean
+            Start diff mode with vertical splits.
 
 base                                                    *gitsigns-config-base*
       Type: `string`, Default: index
@@ -785,9 +744,18 @@ word_diff                                          *gitsigns-config-word_diff*
       Requires `config.diff_opts.internal = true` .
 
       Uses the highlights:
-        • GitSignsAddLn
-        • GitSignsChangeLn
-        • GitSignsDeleteLn
+        • For word diff in previews:
+          • `GitSignsAddInline`
+          • `GitSignsChangeInline`
+          • `GitSignsDeleteInline`
+        • For word diff in buffer:
+          • `GitSignsAddLnInline`
+          • `GitSignsChangeLnInline`
+          • `GitSignsDeleteLnInline`
+        • For word diff in virtual lines (e.g. show_deleted):
+          • `GitSignsAddVirtLnInline`
+          • `GitSignsChangeVirtLnInline`
+          • `GitSignsDeleteVirtLnInline`
 
 debug_mode                                        *gitsigns-config-debug_mode*
       Type: `boolean`, Default: `false`
@@ -796,30 +764,30 @@ debug_mode                                        *gitsigns-config-debug_mode*
       available: `dump_cache`, `debug_messages`, `clear_debug`.
 
 watch_index                                      *gitsigns-config-watch_index*
-   DEPRECATED
+   HARD-DEPRECATED
 
    Please instead use |gitsigns-config-watch_gitdir|.
 
 current_line_blame_delay            *gitsigns-config-current_line_blame_delay*
-   DEPRECATED
+   HARD-DEPRECATED
 
    Please instead use the field `delay` in |gitsigns-config-current_line_blame_opts|.
 
 current_line_blame_position      *gitsigns-config-current_line_blame_position*
-   DEPRECATED
+   HARD-DEPRECATED
 
    Please instead use the field `virt_text_pos` in |gitsigns-config-current_line_blame_opts|.
 
 diff_algorithm                                *gitsigns-config-diff_algorithm*
-   DEPRECATED
+   HARD-DEPRECATED
 
    Please instead use the field `algorithm` in |gitsigns-config-diff_opts|.
 
 use_decoration_api                        *gitsigns-config-use_decoration_api*
-   DEPRECATED
+   HARD-DEPRECATED
 
 use_internal_diff                          *gitsigns-config-use_internal_diff*
-   DEPRECATED
+   HARD-DEPRECATED
 
    Please instead use the field `internal` in |gitsigns-config-diff_opts|.
 

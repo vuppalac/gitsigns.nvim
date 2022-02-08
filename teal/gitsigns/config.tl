@@ -14,6 +14,7 @@ local record SchemaElem
 
   record Deprecated
     new_field: string
+    message: string
     hard: boolean
   end
 
@@ -31,6 +32,7 @@ local record M
       algorithm: string
       internal: boolean
       indent_heuristic: boolean
+      vertical: boolean
     end
 
     diff_opts: DiffOpts
@@ -130,44 +132,25 @@ M.schema = {
         • `show_count` to enable showing count of hunk, e.g. number of deleted
           lines.
 
-      Note if `hl`, `numhl` or `linehl` use a `GitSigns*` highlight and it is
-      not defined, it will be automatically derived by searching for other
-      defined highlights in the following order:
+      Note if a highlight is not defined, it will be automatically derived by
+      searching for other defined highlights in the following order:
         • `GitGutter*`
         • `Signify*`
         • `Diff*Gutter`
         • `diff*`
         • `Diff*`
 
-      For example if `signs.add.hl = GitSignsAdd` and `GitSignsAdd` is not
-      defined but `GitGutterAdd` is defined, then `GitSignsAdd` will be linked
-      to `GitGutterAdd`.
+      For example if `GitSignsAdd` is not defined but `GitGutterAdd` is defined,
+      then `GitSignsAdd` will be linked to `GitGutterAdd`.
     ]]
   },
 
   keymaps = {
-    type = 'table',
-    default = {
-      -- Default keymap options
-      noremap = true,
-
-      ['n ]c'] = { expr = true, "&diff ? ']c' : '<cmd>Gitsigns next_hunk<CR>'"},
-      ['n [c'] = { expr = true, "&diff ? '[c' : '<cmd>Gitsigns prev_hunk<CR>'"},
-
-      ['n <leader>hs'] = '<cmd>Gitsigns stage_hunk<CR>',
-      ['v <leader>hs'] = ':Gitsigns stage_hunk<CR>',
-      ['n <leader>hu'] = '<cmd>Gitsigns undo_stage_hunk<CR>',
-      ['n <leader>hr'] = '<cmd>Gitsigns reset_hunk<CR>',
-      ['v <leader>hr'] = ':Gitsigns reset_hunk<CR>',
-      ['n <leader>hR'] = '<cmd>Gitsigns reset_buffer<CR>',
-      ['n <leader>hp'] = '<cmd>Gitsigns preview_hunk<CR>',
-      ['n <leader>hb'] = '<cmd>lua require"gitsigns".blame_line{full=true}<CR>',
-      ['n <leader>hS'] = '<cmd>Gitsigns stage_buffer<CR>',
-      ['n <leader>hU'] = '<cmd>Gitsigns reset_buffer_index<CR>',
-
-      ['o ih'] = ':<C-U>Gitsigns select_hunk<CR>',
-      ['x ih'] = ':<C-U>Gitsigns select_hunk<CR>'
+    deprecated = {
+      message = "config.keymaps is now deprecated. Please define mappings in config.on_attach() instead."
     },
+    type = 'table',
+    default = {},
     description = [[
       Keymaps to set up when attaching to a buffer.
 
@@ -290,7 +273,8 @@ M.schema = {
       local r = {
         algorithm = 'myers',
         internal = false,
-        indent_heuristic = false
+        indent_heuristic = false,
+        vertical = true
       }
       for _, o in ipairs(vim.opt.diffopt:get()) do
         if o == 'indent-heuristic' then
@@ -302,6 +286,8 @@ M.schema = {
             -- Use FFI
             r.internal = true
           end
+        elseif o == 'horizontal' then
+          r.vertical = false
         elseif vim.startswith(o, 'algorithm:') then
           r.algorithm = string.sub(o, 11)
         end
@@ -328,6 +314,8 @@ M.schema = {
         • indent_heuristic: string
             Use the indent heuristic for the internal
             diff library.
+        • vertical: boolean
+            Start diff mode with vertical splits.
     ]]
   },
 
@@ -607,9 +595,18 @@ M.schema = {
       Requires `config.diff_opts.internal = true` .
 
       Uses the highlights:
-        • GitSignsAddLn
-        • GitSignsChangeLn
-        • GitSignsDeleteLn
+        • For word diff in previews:
+          • `GitSignsAddInline`
+          • `GitSignsChangeInline`
+          • `GitSignsDeleteInline`
+        • For word diff in buffer:
+          • `GitSignsAddLnInline`
+          • `GitSignsChangeLnInline`
+          • `GitSignsDeleteLnInline`
+        • For word diff in virtual lines (e.g. show_deleted):
+          • `GitSignsAddVirtLnInline`
+          • `GitSignsChangeVirtLnInline`
+          • `GitSignsDeleteVirtLnInline`
     ]]
   },
 
@@ -625,7 +622,7 @@ M.schema = {
 
   _blame_cache = {
     type = 'boolean',
-    default = false,
+    default = true,
     description = [[
       Cache blame results for current_line_blame
     ]]
@@ -640,12 +637,12 @@ M.schema = {
     ]]
   },
 
-  watch_index                 = { deprecated = {new_field = 'watch_gitdir' } },
-  current_line_blame_delay    = { deprecated = {new_field = 'current_line_blame_opts.delay'} },
-  current_line_blame_position = { deprecated = {new_field = 'current_line_blame_opts.virt_text_pos'} },
-  diff_algorithm              = { deprecated = {new_field = 'diff_opts.algorithm'} },
-  use_decoration_api          = { deprecated = true },
-  use_internal_diff           = { deprecated = {new_field = 'diff_opts.internal'} },
+  watch_index                 = { deprecated = {hard = true, new_field = 'watch_gitdir' } },
+  current_line_blame_delay    = { deprecated = {hard = true, new_field = 'current_line_blame_opts.delay'} },
+  current_line_blame_position = { deprecated = {hard = true, new_field = 'current_line_blame_opts.virt_text_pos'} },
+  diff_algorithm              = { deprecated = {hard = true, new_field = 'diff_opts.algorithm'} },
+  use_decoration_api          = { deprecated = {hard = true}},
+  use_internal_diff           = { deprecated = {hard = true, new_field = 'diff_opts.internal'} },
 }
 
 warn = function(s: string, ...: any)
@@ -654,11 +651,12 @@ end
 
 local function validate_config(config: {string:any})
   for k, v in pairs(config) do
-    if M.schema[k] == nil then
+    local kschema = M.schema[k]
+    if kschema == nil then
       warn("gitsigns: Ignoring invalid configuration field '%s'", k)
-    else
+    elseif kschema.type then
       vim.validate {
-        [k] = { v, M.schema[k].type } as {any};
+        [k] = { v, kschema.type } as {any};
       }
     end
   end
@@ -691,15 +689,15 @@ local function handle_deprecated(cfg: {string:any})
         end
 
         if dep.hard then
-          if dep.new_field then
+          if dep.message then
+            warn(dep.message)
+          elseif dep.new_field then
             warn('%s is now deprecated, please use %s', k, dep.new_field)
           else
             warn('%s is now deprecated; ignoring', k)
           end
         end
       end
-
-      cfg[k] = nil
     end
   end
 end
