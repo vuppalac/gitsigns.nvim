@@ -42,16 +42,12 @@ Super fast git decorations implemented purely in lua/teal.
 ```lua
 use {
   'lewis6991/gitsigns.nvim',
-  requires = {
-    'nvim-lua/plenary.nvim'
-  },
   -- tag = 'release' -- To use the latest release
 }
 ```
 
 [vim-plug](https://github.com/junegunn/vim-plug):
 ```vim
-Plug 'nvim-lua/plenary.nvim'
 Plug 'lewis6991/gitsigns.nvim'
 ```
 
@@ -68,9 +64,6 @@ be setup directly in the plugin spec:
 ```lua
 use {
   'lewis6991/gitsigns.nvim',
-  requires = {
-    'nvim-lua/plenary.nvim'
-  },
   config = function()
     require('gitsigns').setup()
   end
@@ -146,8 +139,27 @@ require('gitsigns').setup{
     end
 
     -- Navigation
-    map('n', ']c', "&diff ? ']c' : '<cmd>Gitsigns next_hunk<CR>'", {expr=true})
-    map('n', '[c', "&diff ? '[c' : '<cmd>Gitsigns prev_hunk<CR>'", {expr=true})
+    map('n', ']c', function()
+      if vim.wo.diff then
+        return ']c'
+      else
+        vim.schedule(function()
+          gitsigns.next_hunk()
+        end)
+        return '<Ignore>'
+      end
+    end, {expr=true})
+
+    map('n', '[c', function()
+      if vim.wo.diff then
+        return '[c'
+      else
+        vim.schedule(function()
+          gitsigns.prev_hunk()
+        end)
+        return '<Ignore>'
+      end
+    end, {expr=true})
 
     -- Actions
     map({'n', 'v'}, '<leader>hs', ':Gitsigns stage_hunk<CR>')

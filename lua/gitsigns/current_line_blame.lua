@@ -1,7 +1,7 @@
-local a = require('plenary.async.async')
+local a = require('gitsigns.async')
 local wrap = a.wrap
 local void = a.void
-local scheduler = require('plenary.async.util').scheduler
+local scheduler = a.scheduler
 
 local cache = require('gitsigns.cache').cache
 local config = require('gitsigns.config').config
@@ -135,6 +135,11 @@ local update = void(function()
       return
    end
 
+   if api.nvim_get_mode().mode == 'i' then
+      reset(bufnr)
+      return
+   end
+
 
 
 
@@ -213,7 +218,7 @@ M.setup = function()
 
 
       nvim.autocmd(
-      { 'FocusLost', 'BufLeave' },
+      { 'InsertEnter', 'FocusLost', 'BufLeave' },
       { group = 'gitsigns_blame', callback = function() reset() end })
 
 
