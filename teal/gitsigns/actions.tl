@@ -8,6 +8,8 @@ local util          = require('gitsigns.util')
 local manager       = require('gitsigns.manager')
 local git           = require('gitsigns.git')
 local warn          = require('gitsigns.message').warn
+local run_diff      = require('gitsigns.diff')
+local signs         = require('gitsigns.signs')
 
 local gs_cache       = require('gitsigns.cache')
 local cache          = gs_cache.cache
@@ -47,7 +49,7 @@ local record M
   blame_line         : function -- function()
   change_base        : function(base: string, global: boolean)
   reset_base         : function(global: boolean)
-  diffthis           : function -- function(base: string)
+  diffthis           : function(base: string)
 
   record QFListOpts
     use_location_list: boolean
@@ -63,48 +65,120 @@ local record M
   get_actions        : function(bufnr: integer, lnum: integer)
 
   refresh            : function()
-  toggle_signs       : function()
-  toggle_numhl       : function()
-  toggle_linehl      : function()
-  toggle_word_diff   : function()
-  toggle_current_line_blame : function()
-  toggle_deleted     : function()
+  toggle_signs       : function(boolean): boolean
+  toggle_numhl       : function(boolean): boolean
+  toggle_linehl      : function(boolean): boolean
+  toggle_word_diff   : function(boolean): boolean
+  toggle_current_line_blame : function(boolean): boolean
+  toggle_deleted     : function(boolean): boolean
 end
 
---- Toggle |gitsigns-config-signcolumn|
-M.toggle_signs = function()
-  config.signcolumn = not config.signcolumn
+--- Toggle |gitsigns-config-signbooleancolumn|
+---
+--- Parameters:~
+---     {value} boolean|nil Value to set toggle. If `nil`
+---     the toggle value is inverted.
+---
+--- Returns:~
+---     Current value of |gitsigns-config-signcolumn|
+M.toggle_signs = function(value: boolean): boolean
+  if value ~= nil then
+    config.signcolumn = value
+  else
+    config.signcolumn = not config.signcolumn
+  end
   M.refresh()
+  return config.signcolumn
 end
 
 --- Toggle |gitsigns-config-numhl|
-M.toggle_numhl = function()
-  config.numhl = not config.numhl
+---
+--- Parameters:~
+---     {value} boolean|nil Value to set toggle. If `nil`
+---     the toggle value is inverted.
+---
+--- Returns:~
+---     Current value of |gitsigns-config-numhl|
+M.toggle_numhl = function(value: boolean): boolean
+  if value ~= nil then
+    config.numhl = value
+  else
+    config.numhl = not config.numhl
+  end
   M.refresh()
+  return config.numhl
 end
 
 --- Toggle |gitsigns-config-linehl|
-M.toggle_linehl = function()
-  config.linehl = not config.linehl
+---
+--- Parameters:~
+---     {value} boolean|nil Value to set toggle. If `nil`
+---     the toggle value is inverted.
+---
+--- Returns:~
+---     Current value of |gitsigns-config-linehl|
+M.toggle_linehl = function(value: boolean): boolean
+  if value ~= nil then
+    config.linehl = value
+  else
+    config.linehl = not config.linehl
+  end
   M.refresh()
+  return config.linehl
 end
 
 --- Toggle |gitsigns-config-word_diff|
-M.toggle_word_diff = function()
-  config.word_diff = not config.word_diff
+---
+--- Parameters:~
+---     {value} boolean|nil Value to set toggle. If `nil`
+---     the toggle value is inverted.
+---
+--- Returns:~
+---     Current value of |gitsigns-config-word_diff|
+M.toggle_word_diff = function(value: boolean): boolean
+  if value ~= nil then
+    config.word_diff = value
+  else
+    config.word_diff = not config.word_diff
+  end
   M.refresh()
+  return config.word_diff
 end
 
 --- Toggle |gitsigns-config-current_line_blame|
-M.toggle_current_line_blame = function()
-  config.current_line_blame = not config.current_line_blame
+---
+--- Parameters:~
+---     {value} boolean|nil Value to set toggle. If `nil`
+---     the toggle value is inverted.
+---
+--- Returns:~
+---     Current value of |gitsigns-config-current_line_blame|
+M.toggle_current_line_blame = function(value: boolean): boolean
+  if value ~= nil then
+    config.current_line_blame = value
+  else
+    config.current_line_blame = not config.current_line_blame
+  end
   M.refresh()
+  return config.current_line_blame
 end
 
 --- Toggle |gitsigns-config-show_deleted|
-M.toggle_deleted = function()
-  config.show_deleted = not config.show_deleted
+---
+--- Parameters:~
+---     {value} boolean|nil Value to set toggle. If `nil`
+---     the toggle value is inverted.
+---
+--- Returns:~
+---     Current value of |gitsigns-config-show_deleted|
+M.toggle_deleted = function(value: boolean): boolean
+  if value ~= nil then
+    config.show_deleted = value
+  else
+    config.show_deleted = not config.show_deleted
+  end
   M.refresh()
+  return config.show_deleted
 end
 
 local function get_cursor_hunk(bufnr: integer, hunks: {Hunk}): Hunk, integer
@@ -113,6 +187,13 @@ local function get_cursor_hunk(bufnr: integer, hunks: {Hunk}): Hunk, integer
 
   local lnum = api.nvim_win_get_cursor(0)[1]
   return gs_hunks.find_hunk(lnum, hunks)
+end
+
+local function update(bufnr: integer)
+  manager.update(bufnr)
+  if vim.wo.diff then
+    require('gitsigns.diffthis').update(bufnr)
+  end
 end
 
 --- Stage the hunk at the cursor position, or all lines in the
@@ -165,7 +246,7 @@ M.stage_hunk = mk_repeatable(void(function(range: {integer, integer})
   table.insert(bcache.staged_diffs, hunk)
 
   bcache.compare_text = nil -- Invalidate
-  manager.update(bufnr)
+  update(bufnr)
 end))
 
 --- Reset the lines of the hunk at the cursor position, or all
@@ -249,7 +330,7 @@ M.undo_stage_hunk = void(function()
 
   bcache.git_obj:stage_hunks({hunk}, true)
   bcache.compare_text = nil -- Invalidate
-  manager.update(bufnr)
+  update(bufnr)
 end)
 
 --- Stage all hunks in current buffer.
@@ -283,7 +364,7 @@ M.stage_buffer = void(function()
   end
   bcache.compare_text = nil -- Invalidate
 
-  manager.update(bufnr)
+  update(bufnr)
 end)
 
 --- Unstage all hunks for current buffer in the index. Note:
@@ -311,7 +392,7 @@ M.reset_buffer_index = void(function()
   bcache.compare_text = nil -- Invalidate
 
   scheduler()
-  manager.update(bufnr)
+  update(bufnr)
 end)
 
 local function process_nav_opts(opts: NavHunkOpts)
@@ -451,22 +532,6 @@ local function noautocmd(f: function()): function()
   end
 end
 
--- Strip '\r' from the EOL of each line only if all lines end with '\r'
-local function strip_cr(xs0: {string}): {string}
-  for i = 1, #xs0 do
-    if xs0[i]:sub(-1) ~= '\r' then
-      -- don't strip, return early
-      return xs0
-    end
-  end
-  -- all lines end with '\r', need to strip
-  local xs = vim.deepcopy(xs0)
-  for i = 1, #xs do
-    xs[i] = xs[i]:sub(1, -2)
-  end
-  return xs
-end
-
 --- Preview the hunk at the cursor position in a floating
 --- window.
 M.preview_hunk = noautocmd(function()
@@ -479,7 +544,7 @@ M.preview_hunk = noautocmd(function()
 
   local hlines = gs_hunks.patch_lines(hunk)
   if vim.bo[cbuf].fileformat == 'dos' then
-    hlines = strip_cr(hlines)
+    hlines = util.strip_cr(hlines)
   end
 
   local lines = {
@@ -537,17 +602,6 @@ M.get_hunks = function(bufnr: integer): {Hunk_Public}
     }
   end
   return ret
-end
-
-local function run_diff(a: {string}, b: {string}): {Hunk}
-  local diff_opts = config.diff_opts
-  local f: function({string}, {string}, string, boolean): {Hunk}
-  if config.diff_opts.internal then
-    f = require('gitsigns.diff_int').run_diff
-  else
-    f = require('gitsigns.diff_ext').run_diff
-  end
-  return f(a, b, diff_opts.algorithm, diff_opts.indent_heuristic)
 end
 
 local function get_blame_hunk(repo: git.Repo, info: git.BlameInfo): Hunk, integer, integer
@@ -677,17 +731,10 @@ M.blame_line = void(function(opts: boolean | BlameOpts)
   end
 end)
 
-local function calc_base(base: string): string
-  if base and base:sub(1, 1):match('[~\\^]') then
-    base = 'HEAD'..base
-  end
-  return base
-end
-
 local function update_buf_base(buf: integer, bcache: CacheEntry, base: string)
     bcache.base = base
     bcache.compare_text = nil
-    manager.update(buf, bcache)
+    update(buf)
 end
 
 --- Change the base revision to diff against. If {base} is not
@@ -724,7 +771,7 @@ end
 --- For a more complete list of ways to specify bases, see
 --- |gitsigns-revision|.
 M.change_base = void(function(base: string, global: boolean)
-  base = calc_base(base)
+  base = util.calc_base(base)
 
   if global then
     config.base = base
@@ -752,6 +799,9 @@ end
 --- Perform a |vimdiff| on the given file with {base} if it is
 --- given, or with the currently set base (index by default).
 ---
+--- If {base} is the index, then the opened diff buffer is editable
+--- and any written changes will update the index accordingly.
+---
 --- Examples: >
 ---   " Diff against the index
 ---   :Gitsigns diffthis
@@ -765,61 +815,10 @@ end
 ---
 --- Attributes: ~
 ---     {async}
-M.diffthis = void(function(base: string)
-  local bufnr = current_buf()
-  local bcache = cache[bufnr]
-  if not bcache then return end
-
-  if api.nvim_win_get_option(0, 'diff') then return end
-
-  local ff = vim.bo[bufnr].fileformat
-
-  local text: {string}
-  local err: string
-  local comp_rev = bcache:get_compare_rev(calc_base(base))
-
-  if base then
-    text, err = bcache.git_obj:get_show_text(comp_rev)
-    if ff == 'dos' then
-      text = strip_cr(text)
-    end
-    if err then
-      print(err)
-      return
-    end
-    scheduler()
-  else
-    text = bcache:get_compare_text()
-  end
-
-  local ft = api.nvim_buf_get_option(bufnr, 'filetype')
-
-  local bufname = string.format(
-    'gitsigns://%s/%s',
-    bcache.git_obj.repo.gitdir,
-    comp_rev..':'..bcache.git_obj.relpath
-  )
-
-  vim.cmd'diffthis'
-
-  vim.cmd(table.concat({
-    'keepalt', 'aboveleft',
-    config.diff_opts.vertical and 'vertical' or '',
-    'split', bufname
-  }, ' '))
-
-  local dbuf = current_buf()
-
-  api.nvim_buf_set_option(dbuf, 'modifiable', true)
-  util.set_lines(dbuf, 0, -1, text)
-  api.nvim_buf_set_option(dbuf, 'modifiable', false)
-
-  api.nvim_buf_set_option(dbuf, 'filetype', ft)
-  api.nvim_buf_set_option(dbuf, 'buftype', 'nowrite')
-  api.nvim_buf_set_option(dbuf, 'bufhidden', 'wipe')
-
-  vim.cmd'diffthis'
-end)
+M.diffthis = function(base: string)
+  local diffthis = require('gitsigns.diffthis')
+  diffthis.run(base, config.diff_opts.vertical)
+end
 
 local function hunks_to_qflist(buf_or_filename: number|string, hunks: {Hunk}, qflist: {vim.fn.QFItem})
   for i, hunk in ipairs(hunks) do
@@ -1002,7 +1001,7 @@ end
 --- Attributes: ~
 ---     {async}
 M.refresh = void(function()
-  manager.setup_signs(true)
+  signs.setup(true)
   require('gitsigns.highlight').setup_highlights()
   require('gitsigns.current_line_blame').setup()
   for k, v in pairs(cache as {integer:CacheEntry}) do

@@ -17,6 +17,7 @@ local dprintf           = gs_debug.dprintf
 local eprint            = gs_debug.eprint
 local subprocess        = require('gitsigns.subprocess')
 local util              = require('gitsigns.util')
+local run_diff          = require('gitsigns.diff')
 
 local gs_hunks          = require("gitsigns.hunks")
 local Hunk              = gs_hunks.Hunk
@@ -34,7 +35,6 @@ local record M
   apply_word_diff: function(buf: integer, row: integer)
 
   setup: function()
-  setup_signs: function(redefine: boolean)
 end
 
 local schedule_if_buf_valid = function(buf: integer, cb: function)
@@ -70,89 +70,13 @@ function M.apply_win_signs(bufnr: integer, hunks: {Hunk}, top: integer, bot: int
   signs.draw(bufnr, top, bot)
 end
 
--- Speculate on future signs. It's not a big deal if we speculate incorrectly as
--- update() will overwrite all the signs anyway. This has noticeable effect on
--- large files and even makes small files feel very snappy.
---
--- Returns true if signs are added or removed
-local function speculate_signs(buf: integer, last_orig: integer, last_new: integer): boolean
-  if last_new < last_orig then
-    -- Lines removed
-    --
-    -- Cannot do much here due to https://github.com/neovim/neovim/pull/12323
-  elseif last_new > last_orig then
-    -- Lines added
-
-    if last_orig == 0 then
-      local placed = signs.get(buf, 1)
-
-      -- Add 'added' signs only if there wasn't a 'delete' sign above
-      if not placed or not vim.startswith(placed, 'GitSignsTopDelete') then
-        -- If lines are added, make sure to immediately add the signs
-        for i = 1, last_new do
-          signs.add(config, buf, {{type='add', count=0, lnum=i}})
-        end
-      else
-        signs.remove(buf, 1)
-      end
-      return true
-    else
-      local placed = signs.get(buf, last_orig)
-
-      -- Add 'added' signs only if there wasn't a 'delete' sign above
-      if not placed or not vim.startswith(placed, 'GitSignsDelete') then
-        -- If lines are added, make sure to immediately add the signs
-        for i = last_orig+1, last_new do
-          signs.add(config, buf, {{type='add', count=0, lnum=i}})
-        end
-        return true
-      end
-    end
-  else
-    -- Line change
-
-    local placed = signs.get(buf, last_orig)
-
-    -- add a 'change' sign if there are no other signs
-    if not placed then
-      signs.add(config, buf, {{type='change', count=0, lnum=last_orig}})
-      return true
-    end
-  end
-end
-
-M.on_lines = function(buf: integer, last_orig: integer, last_new: integer): boolean
+M.on_lines = function(buf: integer, _: integer, _: integer): boolean
   local bcache = cache[buf]
   if not bcache then
     dprint('Cache for buffer was nil. Detaching')
     return true
   end
 
-  -- Schedule sign speculation ortherwise CTRL-C in insert mode can cause a
-  -- callback error. See #346
-  schedule_if_buf_valid(buf, function()
-    if speculate_signs(buf, last_orig, last_new) then
-      -- Speculative signs are added immediately whereas updates are debounced and
-      -- throttled for each buffer. If we perform two quick updates which result
-      -- in a sign begin added then removed, we need to make sure speculative
-      -- signs don't incorrectly persist. Example:
-      --
-      --   -> buffer change
-      --      - speculative signs (#1)
-      --      - update (#1)
-      --   -> undo (quickly after buffer change)
-      --      - speculative signs (#2)
-      --      - update (#2)
-      --
-      -- Update #1 is dropped due to the debounce which results in update #2 not
-      -- updating signs due to the hunks not changing. Since signs are never
-      -- updated, the speculative signs #1 and #2 will persist.
-      --
-      -- To get around this, we just need to invalidate the hunks to force a sign
-      -- refresh.
-      bcache.hunks = nil
-    end
-  end)
   M.update_debounced(buf, cache[buf])
 end
 
@@ -290,21 +214,11 @@ local update0 = function(bufnr: integer, bcache: CacheEntry)
   local buftext = util.buf_lines(bufnr)
   local git_obj = bcache.git_obj
 
-  -- Make sure these requires are done in the main event.
-  -- See https://github.com/neovim/neovim/issues/15147
-  local run_diff: function({string}, {string}, string, boolean): {Hunk}
-  if config.diff_opts.internal then
-    run_diff = require('gitsigns.diff_int').run_diff
-  else
-    run_diff = require('gitsigns.diff_ext').run_diff
-  end
-
   if not bcache.compare_text or config._refresh_staged_on_update then
     bcache.compare_text = git_obj:get_show_text(bcache:get_compare_rev())
   end
 
-  bcache.hunks = run_diff(bcache.compare_text, buftext,
-    config.diff_opts.algorithm, config.diff_opts.indent_heuristic)
+  bcache.hunks = run_diff(bcache.compare_text, buftext)
 
   scheduler_if_buf_valid(bufnr)
   if gs_hunks.compare_heads(bcache.hunks, old_hunks) then
@@ -328,25 +242,10 @@ end
 -- Since updates are asynchronous we need to make sure an update isn't performed
 -- whilst another one is in progress. If this happens then schedule another
 -- update after the current one has completed.
-M.update = throttle_by_id(update0) as function(integer, CacheEntry)
+M.update = throttle_by_id(update0, true) as function(integer, CacheEntry)
 
 M.setup = function()
   M.update_debounced = debounce_trailing(config.update_debounce, void(M.update)) as function(integer)
-end
-
-M.setup_signs = function(redefine: boolean)
-  -- Define signs
-  for t, sign_name in pairs(signs.sign_map) do
-    local cs = config.signs[t]
-
-    signs.define(sign_name, {
-      texthl = cs.hl,
-      text   = config.signcolumn and cs.text or nil,
-      numhl  = config.numhl      and cs.numhl,
-      linehl = config.linehl     and cs.linehl
-    }, redefine)
-
-  end
 end
 
 return M

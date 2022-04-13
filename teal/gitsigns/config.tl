@@ -84,6 +84,7 @@ local record M
 
       delay: integer
       ignore_whitespace: boolean
+      virt_text_priority: integer
     end
 
     preview_config: {string:any}
@@ -99,6 +100,8 @@ local record M
     word_diff: boolean
     _refresh_staged_on_update: boolean
     _blame_cache: boolean
+    _threaded_diff: boolean
+    _extmark_signs: boolean
 
     _git_version: string
     _verbose: boolean
@@ -434,6 +437,7 @@ M.schema = {
     default = {
       virt_text = true,
       virt_text_pos = 'eol',
+      virt_text_priority = 100,
       delay = 1000
     },
     description = [[
@@ -453,6 +457,8 @@ M.schema = {
           displayed.
         • ignore_whitespace: boolean
           Ignore whitespace when running blame.
+        • virt_text_priority: integer
+          Priority of virtual text.
     ]]
   },
 
@@ -613,7 +619,7 @@ M.schema = {
 
   _refresh_staged_on_update = {
     type = 'boolean',
-    default = true,
+    default = false,
     description = [[
       Always refresh the staged file on each update. Disabling this will cause
       the staged file to only be refreshed when an update to the index is
@@ -626,6 +632,22 @@ M.schema = {
     default = true,
     description = [[
       Cache blame results for current_line_blame
+    ]]
+  },
+
+  _threaded_diff = {
+    type = 'boolean',
+    default = false,
+    description = [[
+      Run diffs on a separate thread
+    ]]
+  },
+
+  _extmark_signs = {
+    type = 'boolean',
+    default = false,
+    description = [[
+      Use extmarks for placing signs.
     ]]
   },
 

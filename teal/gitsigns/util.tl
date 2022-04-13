@@ -107,4 +107,36 @@ function M.copy_array<T>(x: {T}): {T}
   return r
 end
 
+-- Strip '\r' from the EOL of each line only if all lines end with '\r'
+function M.strip_cr(xs0: {string}): {string}
+  for i = 1, #xs0 do
+    if xs0[i]:sub(-1) ~= '\r' then
+      -- don't strip, return early
+      return xs0
+    end
+  end
+  -- all lines end with '\r', need to strip
+  local xs = vim.deepcopy(xs0)
+  for i = 1, #xs do
+    xs[i] = xs[i]:sub(1, -2)
+  end
+  return xs
+end
+
+function M.calc_base(base: string): string
+  if base and base:sub(1, 1):match('[~\\^]') then
+    base = 'HEAD'..base
+  end
+  return base
+end
+
+function M.setdefault(tbl: table)
+  setmetatable(tbl, {
+    __index = function(t: table, k: any): any
+      t[k] = {}
+      return t[k]
+    end
+  })
+end
+
 return M

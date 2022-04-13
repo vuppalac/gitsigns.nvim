@@ -17,6 +17,7 @@ local dprintf = gs_debug.dprintf
 local eprint = gs_debug.eprint
 local subprocess = require('gitsigns.subprocess')
 local util = require('gitsigns.util')
+local run_diff = require('gitsigns.diff')
 
 local gs_hunks = require("gitsigns.hunks")
 local Hunk = gs_hunks.Hunk
@@ -26,7 +27,6 @@ local config = require('gitsigns.config').config
 local api = vim.api
 
 local M = {}
-
 
 
 
@@ -70,89 +70,13 @@ function M.apply_win_signs(bufnr, hunks, top, bot, clear)
    signs.draw(bufnr, top, bot)
 end
 
-
-
-
-
-
-local function speculate_signs(buf, last_orig, last_new)
-   if last_new < last_orig then
-
-
-
-   elseif last_new > last_orig then
-
-
-      if last_orig == 0 then
-         local placed = signs.get(buf, 1)
-
-
-         if not placed or not vim.startswith(placed, 'GitSignsTopDelete') then
-
-            for i = 1, last_new do
-               signs.add(config, buf, { { type = 'add', count = 0, lnum = i } })
-            end
-         else
-            signs.remove(buf, 1)
-         end
-         return true
-      else
-         local placed = signs.get(buf, last_orig)
-
-
-         if not placed or not vim.startswith(placed, 'GitSignsDelete') then
-
-            for i = last_orig + 1, last_new do
-               signs.add(config, buf, { { type = 'add', count = 0, lnum = i } })
-            end
-            return true
-         end
-      end
-   else
-
-
-      local placed = signs.get(buf, last_orig)
-
-
-      if not placed then
-         signs.add(config, buf, { { type = 'change', count = 0, lnum = last_orig } })
-         return true
-      end
-   end
-end
-
-M.on_lines = function(buf, last_orig, last_new)
+M.on_lines = function(buf, _, _)
    local bcache = cache[buf]
    if not bcache then
       dprint('Cache for buffer was nil. Detaching')
       return true
    end
 
-
-
-   schedule_if_buf_valid(buf, function()
-      if speculate_signs(buf, last_orig, last_new) then
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-         bcache.hunks = nil
-      end
-   end)
    M.update_debounced(buf, cache[buf])
 end
 
@@ -290,21 +214,11 @@ local update0 = function(bufnr, bcache)
    local buftext = util.buf_lines(bufnr)
    local git_obj = bcache.git_obj
 
-
-
-   local run_diff
-   if config.diff_opts.internal then
-      run_diff = require('gitsigns.diff_int').run_diff
-   else
-      run_diff = require('gitsigns.diff_ext').run_diff
-   end
-
    if not bcache.compare_text or config._refresh_staged_on_update then
       bcache.compare_text = git_obj:get_show_text(bcache:get_compare_rev())
    end
 
-   bcache.hunks = run_diff(bcache.compare_text, buftext,
-   config.diff_opts.algorithm, config.diff_opts.indent_heuristic)
+   bcache.hunks = run_diff(bcache.compare_text, buftext)
 
    scheduler_if_buf_valid(bufnr)
    if gs_hunks.compare_heads(bcache.hunks, old_hunks) then
@@ -328,25 +242,10 @@ end
 
 
 
-M.update = throttle_by_id(update0)
+M.update = throttle_by_id(update0, true)
 
 M.setup = function()
    M.update_debounced = debounce_trailing(config.update_debounce, void(M.update))
-end
-
-M.setup_signs = function(redefine)
-
-   for t, sign_name in pairs(signs.sign_map) do
-      local cs = config.signs[t]
-
-      signs.define(sign_name, {
-         texthl = cs.hl,
-         text = config.signcolumn and cs.text or nil,
-         numhl = config.numhl and cs.numhl,
-         linehl = config.linehl and cs.linehl,
-      }, redefine)
-
-   end
 end
 
 return M

@@ -8,6 +8,8 @@ local util = require('gitsigns.util')
 local manager = require('gitsigns.manager')
 local git = require('gitsigns.git')
 local warn = require('gitsigns.message').warn
+local run_diff = require('gitsigns.diff')
+local signs = require('gitsigns.signs')
 
 local gs_cache = require('gitsigns.cache')
 local cache = gs_cache.cache
@@ -72,39 +74,111 @@ local M = {QFListOpts = {}, }
 
 
 
-M.toggle_signs = function()
-   config.signcolumn = not config.signcolumn
+
+
+
+
+
+
+
+M.toggle_signs = function(value)
+   if value ~= nil then
+      config.signcolumn = value
+   else
+      config.signcolumn = not config.signcolumn
+   end
    M.refresh()
+   return config.signcolumn
 end
 
 
-M.toggle_numhl = function()
-   config.numhl = not config.numhl
+
+
+
+
+
+
+
+M.toggle_numhl = function(value)
+   if value ~= nil then
+      config.numhl = value
+   else
+      config.numhl = not config.numhl
+   end
    M.refresh()
+   return config.numhl
 end
 
 
-M.toggle_linehl = function()
-   config.linehl = not config.linehl
+
+
+
+
+
+
+
+M.toggle_linehl = function(value)
+   if value ~= nil then
+      config.linehl = value
+   else
+      config.linehl = not config.linehl
+   end
    M.refresh()
+   return config.linehl
 end
 
 
-M.toggle_word_diff = function()
-   config.word_diff = not config.word_diff
+
+
+
+
+
+
+
+M.toggle_word_diff = function(value)
+   if value ~= nil then
+      config.word_diff = value
+   else
+      config.word_diff = not config.word_diff
+   end
    M.refresh()
+   return config.word_diff
 end
 
 
-M.toggle_current_line_blame = function()
-   config.current_line_blame = not config.current_line_blame
+
+
+
+
+
+
+
+M.toggle_current_line_blame = function(value)
+   if value ~= nil then
+      config.current_line_blame = value
+   else
+      config.current_line_blame = not config.current_line_blame
+   end
    M.refresh()
+   return config.current_line_blame
 end
 
 
-M.toggle_deleted = function()
-   config.show_deleted = not config.show_deleted
+
+
+
+
+
+
+
+M.toggle_deleted = function(value)
+   if value ~= nil then
+      config.show_deleted = value
+   else
+      config.show_deleted = not config.show_deleted
+   end
    M.refresh()
+   return config.show_deleted
 end
 
 local function get_cursor_hunk(bufnr, hunks)
@@ -113,6 +187,13 @@ local function get_cursor_hunk(bufnr, hunks)
 
    local lnum = api.nvim_win_get_cursor(0)[1]
    return gs_hunks.find_hunk(lnum, hunks)
+end
+
+local function update(bufnr)
+   manager.update(bufnr)
+   if vim.wo.diff then
+      require('gitsigns.diffthis').update(bufnr)
+   end
 end
 
 
@@ -165,7 +246,7 @@ M.stage_hunk = mk_repeatable(void(function(range)
    table.insert(bcache.staged_diffs, hunk)
 
    bcache.compare_text = nil
-   manager.update(bufnr)
+   update(bufnr)
 end))
 
 
@@ -249,7 +330,7 @@ M.undo_stage_hunk = void(function()
 
    bcache.git_obj:stage_hunks({ hunk }, true)
    bcache.compare_text = nil
-   manager.update(bufnr)
+   update(bufnr)
 end)
 
 
@@ -283,7 +364,7 @@ M.stage_buffer = void(function()
    end
    bcache.compare_text = nil
 
-   manager.update(bufnr)
+   update(bufnr)
 end)
 
 
@@ -311,7 +392,7 @@ M.reset_buffer_index = void(function()
    bcache.compare_text = nil
 
    scheduler()
-   manager.update(bufnr)
+   update(bufnr)
 end)
 
 local function process_nav_opts(opts)
@@ -452,22 +533,6 @@ local function noautocmd(f)
 end
 
 
-local function strip_cr(xs0)
-   for i = 1, #xs0 do
-      if xs0[i]:sub(-1) ~= '\r' then
-
-         return xs0
-      end
-   end
-
-   local xs = vim.deepcopy(xs0)
-   for i = 1, #xs do
-      xs[i] = xs[i]:sub(1, -2)
-   end
-   return xs
-end
-
-
 
 M.preview_hunk = noautocmd(function()
 
@@ -479,7 +544,7 @@ M.preview_hunk = noautocmd(function()
 
    local hlines = gs_hunks.patch_lines(hunk)
    if vim.bo[cbuf].fileformat == 'dos' then
-      hlines = strip_cr(hlines)
+      hlines = util.strip_cr(hlines)
    end
 
    local lines = {
@@ -537,17 +602,6 @@ M.get_hunks = function(bufnr)
       }
    end
    return ret
-end
-
-local function run_diff(a, b)
-   local diff_opts = config.diff_opts
-   local f
-   if config.diff_opts.internal then
-      f = require('gitsigns.diff_int').run_diff
-   else
-      f = require('gitsigns.diff_ext').run_diff
-   end
-   return f(a, b, diff_opts.algorithm, diff_opts.indent_heuristic)
 end
 
 local function get_blame_hunk(repo, info)
@@ -677,17 +731,10 @@ M.blame_line = void(function(opts)
    end
 end)
 
-local function calc_base(base)
-   if base and base:sub(1, 1):match('[~\\^]') then
-      base = 'HEAD' .. base
-   end
-   return base
-end
-
 local function update_buf_base(buf, bcache, base)
    bcache.base = base
    bcache.compare_text = nil
-   manager.update(buf, bcache)
+   update(buf)
 end
 
 
@@ -724,7 +771,7 @@ end
 
 
 M.change_base = void(function(base, global)
-   base = calc_base(base)
+   base = util.calc_base(base)
 
    if global then
       config.base = base
@@ -765,61 +812,13 @@ end
 
 
 
-M.diffthis = void(function(base)
-   local bufnr = current_buf()
-   local bcache = cache[bufnr]
-   if not bcache then return end
-
-   if api.nvim_win_get_option(0, 'diff') then return end
-
-   local ff = vim.bo[bufnr].fileformat
-
-   local text
-   local err
-   local comp_rev = bcache:get_compare_rev(calc_base(base))
-
-   if base then
-      text, err = bcache.git_obj:get_show_text(comp_rev)
-      if ff == 'dos' then
-         text = strip_cr(text)
-      end
-      if err then
-         print(err)
-         return
-      end
-      scheduler()
-   else
-      text = bcache:get_compare_text()
-   end
-
-   local ft = api.nvim_buf_get_option(bufnr, 'filetype')
-
-   local bufname = string.format(
-   'gitsigns://%s/%s',
-   bcache.git_obj.repo.gitdir,
-   comp_rev .. ':' .. bcache.git_obj.relpath)
 
 
-   vim.cmd('diffthis')
 
-   vim.cmd(table.concat({
-      'keepalt', 'aboveleft',
-      config.diff_opts.vertical and 'vertical' or '',
-      'split', bufname,
-   }, ' '))
-
-   local dbuf = current_buf()
-
-   api.nvim_buf_set_option(dbuf, 'modifiable', true)
-   util.set_lines(dbuf, 0, -1, text)
-   api.nvim_buf_set_option(dbuf, 'modifiable', false)
-
-   api.nvim_buf_set_option(dbuf, 'filetype', ft)
-   api.nvim_buf_set_option(dbuf, 'buftype', 'nowrite')
-   api.nvim_buf_set_option(dbuf, 'bufhidden', 'wipe')
-
-   vim.cmd('diffthis')
-end)
+M.diffthis = function(base)
+   local diffthis = require('gitsigns.diffthis')
+   diffthis.run(base, config.diff_opts.vertical)
+end
 
 local function hunks_to_qflist(buf_or_filename, hunks, qflist)
    for i, hunk in ipairs(hunks) do
@@ -1002,7 +1001,7 @@ end
 
 
 M.refresh = void(function()
-   manager.setup_signs(true)
+   signs.setup(true)
    require('gitsigns.highlight').setup_highlights()
    require('gitsigns.current_line_blame').setup()
    for k, v in pairs(cache) do

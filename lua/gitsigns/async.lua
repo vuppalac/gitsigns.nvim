@@ -5,8 +5,15 @@ local fun1 = {}
 local fun2 = {}
 local fun2_2 = {}
 local fun3 = {}
+local fun4 = {}
+local fun4_1 = {}
 
 local Async = {}
+
+
+
+
+
 
 
 
@@ -48,7 +55,7 @@ end
 
 function async_thread.finished(x)
    if co.status(x) == 'dead' then
-      local id = string.format("%p", x)
+      local id = threadtostring(x)
       async_thread.threads[id] = nil
       return true
    end

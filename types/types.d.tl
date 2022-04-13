@@ -41,7 +41,7 @@ local record api
     force: boolean
     complete: string|function(arglead: string, line: string): {string}
   end
-  nvim_add_user_command: function(string, function(UserCmdParams), UserCmdOpts)
+  nvim_create_user_command: function(string, function(UserCmdParams), UserCmdOpts)
   nvim_buf_add_highlight: function(number, number, string, number, number, number): number
   nvim_buf_attach: function(number, boolean, {string:any}): boolean
   nvim_buf_call: function(number, function)
@@ -137,7 +137,7 @@ local record api
   nvim_list_runtime_paths: function(): {string}
   nvim_list_tabpages: function(): {any}
   nvim_list_uis: function(): any
-  nvim_list_wins: function(): {number}
+  nvim_list_wins: function(): {integer}
   nvim_load_context: function({string:any}): any
   nvim_open_win: function(number, boolean, {string:any}): integer
   nvim_out_write: function(string)
@@ -178,7 +178,7 @@ local record api
   nvim_win_call: function<T>(number, (function(): T)): T
   nvim_win_close: function(number, boolean)
   nvim_win_del_var: function(number, string)
-  nvim_win_get_buf: function(number): number
+  nvim_win_get_buf: function(integer): integer
   nvim_win_get_config: function(number): {string:any}
   nvim_win_get_cursor: function(number): {integer}
   nvim_win_get_height: function(integer): integer
@@ -209,6 +209,7 @@ global record vim
     executable: function(string): integer
     expand: function(string): string
     getcwd: function(): string
+    input: function(string, string): string
 
     record QFItem
       bufnr: integer
@@ -274,7 +275,10 @@ global record vim
 
   defer_fn: function(function, integer): loop.Timer
 
-  diff: function(string|{string}, string|{string}, table)
+  type DiffResult = {integer, integer, integer, integer}
+
+  -- Assume result_type == 'indices'
+  diff: function(string|{string}, string|{string}, table): {DiffResult}
 
   record o
     diffopt: string
@@ -290,6 +294,20 @@ global record vim
   record BufOption
     {BufOption}
     fileformat: string
+    filetype: string
+    modifiable: boolean
+    modified: boolean
+
+    enum BufHidden
+      '' 'hide' 'unload' 'delete' 'wipe'
+    end
+
+    bufhidden: BufHidden
+
+    enum BufType
+      '' 'acwrite' 'help' 'nofile' 'nowrite' 'quickfix' 'terminal' 'prompt'
+    end
+    buftype: BufType
   end
 
   bo: BufOption
@@ -334,6 +352,7 @@ global record vim
       get_repeat: function(Timer): number
       get_due_in: function(Timer): number
     end
+    hrtime: function(): number
     new_timer: function(): Timer
     timer_start: function(Timer, integer, integer, function()): integer | string
 
@@ -413,6 +432,12 @@ global record vim
     new_pipe: function(boolean): Pipe
     shutdown: function(any, function)
     close: function(any, function)
+
+    record WorkCtx
+      queue: function(WorkCtx, ...:any)
+    end
+
+    new_work: function(function, function): WorkCtx
   end
 
   in_fast_event: function(): boolean
@@ -456,6 +481,7 @@ global record vim
     'force'
   end
 
+  tbl_add_reverse_lookup: function<K,I>({K:I}): {I:K}
   tbl_deep_extend: function(ExtendBehavior, table, table, ...: table): table
 
   tbl_extend: function(ExtendBehavior, table, table, ...: table): table
@@ -489,6 +515,10 @@ global record vim
 
   wait: function(number, function, number, boolean)
 
+  record ui
+    input: function({string:any}, function(string))
+  end
+
   record VersionDetails
     api_compatible: integer
     api_level: integer
@@ -500,4 +530,10 @@ global record vim
 
   version: function(): VersionDetails
 
+  record mpack
+    encode: function(any): string
+    decode: function(string): any
+  end
+
+  is_thread: function(): boolean
 end
