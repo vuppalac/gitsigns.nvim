@@ -1,114 +1,78 @@
 local api = vim.api
 
-local Config = require('gitsigns.config').Config
+local SignsConfig = require('gitsigns.config').Config.SignsConfig
 local config = require('gitsigns.config').config
-
-local setdefault = require('gitsigns.util').setdefault
 
 local B = require('gitsigns.signs.base')
 
 local M: B = {}
 
-local record ExtmarkSign
-  id: integer
-  row: integer
-  text: string
-  hl: string
-  linehl: string
-  numhl: string
-  priority: integer
-  type: M.SignType
+local group_base = 'gitsigns_extmark_signs_'
+
+function M.new(cfg: SignsConfig, name: string): B
+  local self = setmetatable({} as B, {__index = M})
+  self.config = cfg
+  self.group = group_base..(name or '')
+  self.ns = api.nvim_create_namespace(self.group)
+  return self
 end
 
--- API which keeps track of which signs have already been placed in the buffer.
--- This allows us to:
---   - efficiently query placed signs.
---   - skip adding a sign if it has already been placed.
-local placed: {integer:{integer:ExtmarkSign}} = {}
-local scheduled: {integer:{integer:ExtmarkSign}} = {}
-
-setdefault(placed)
-setdefault(scheduled)
-
-local ns_em: integer
-
-function M.draw(bufnr: integer, top: integer, bot: integer): boolean
-  local to_place = {}
-  for i = top, bot do
-    if scheduled[bufnr][i] then
-      to_place[#to_place+1] = scheduled[bufnr][i]
-      placed[bufnr][i] = scheduled[bufnr][i]
-      scheduled[bufnr][i]= nil
-    end
-  end
-
-  for _, item in ipairs(to_place) do
-    api.nvim_buf_set_extmark(bufnr, ns_em, item.row, -1, {
-      id              = item.id,
-      sign_text       = item.text,
-      priority        = item.priority,
-      sign_hl_group   = item.hl,
-      number_hl_group = config.numhl and item.numhl or nil,
-      line_hl_group   = config.linehl and item.linehl or nil,
-    })
+function M:on_lines(buf: integer, _: integer, last_orig: integer, last_new: integer)
+  -- Remove extmarks on line deletions to mimic
+  -- the behaviour of vim signs.
+  if last_orig > last_new then
+    self:remove(buf, last_new+1, last_orig)
   end
 end
 
-function M.setup(_redefine: boolean)
-  ns_em = api.nvim_create_namespace('gitsigns_signs')
-end
-
-function M.remove(bufnr: integer, lnum: integer)
-  if lnum then
-    placed[bufnr][lnum] = nil
-    scheduled[bufnr][lnum] = nil
+function M:remove(bufnr: integer, start_lnum: integer, end_lnum: integer)
+  if start_lnum then
+    api.nvim_buf_clear_namespace(bufnr, self.ns, start_lnum-1, end_lnum or start_lnum)
   else
-    placed[bufnr] = nil
-    scheduled[bufnr] = nil
-  end
-
-  if not lnum then
-    api.nvim_buf_clear_namespace(bufnr, ns_em, 0, -1)
-  else
-    api.nvim_buf_clear_namespace(bufnr, ns_em, lnum-1, lnum)
+    api.nvim_buf_clear_namespace(bufnr, self.ns, 0, -1)
   end
 end
 
-function M.schedule(cfg: Config, bufnr: integer, signs: {M.Sign})
-  if not cfg.signcolumn and not cfg.numhl and not cfg.linehl then
+function M:add(bufnr: integer, signs: {M.Sign})
+  if not config.signcolumn and not config.numhl and not config.linehl then
     -- Don't place signs if it won't show anything
     return
   end
 
+  local cfg = self.config
+
   for _, s in ipairs(signs) do
-    if not placed[bufnr][s.lnum] then
-      local cs = cfg.signs[s.type]
+    if not self:contains(bufnr, s.lnum) then
+      local cs = cfg[s.type]
       local text = cs.text
-      if cfg.signcolumn and cs.show_count and s.count then
+      if config.signcolumn and cs.show_count and s.count then
         local count = s.count
-        local cc = cfg.count_chars
+        local cc = config.count_chars
         local count_char = cc[count] or cc['+'] or ''
         text = cs.text..count_char
       end
 
-      scheduled[bufnr][s.lnum] = {
-        id       = s.lnum,
-        text     = cfg.signcolumn and text or '',
-        row      = s.lnum-1,
-        hl       = cs.hl,
-        numhl    = cfg.numhl  and cs.numhl,
-        linehl   = cfg.linehl and cs.linehl,
-        priority = cfg.sign_priority,
-        type     = s.type
-      }
+      api.nvim_buf_set_extmark(bufnr, self.ns, s.lnum-1, -1, {
+        id              = s.lnum,
+        sign_text       = config.signcolumn and text or '',
+        priority        = config.sign_priority,
+        sign_hl_group   = cs.hl,
+        number_hl_group = config.numhl and cs.numhl or nil,
+        line_hl_group   = config.linehl and cs.linehl or nil,
+      })
     end
   end
 end
 
-function M.add(cfg: Config, bufnr: integer, signs: {M.Sign})
-  M.schedule(cfg, bufnr, signs)
-  for _, s in ipairs(signs) do
-    M.draw(bufnr, s.lnum, s.lnum)
+function M:contains(bufnr: integer, start: integer, last: integer): boolean
+  local marks = api.nvim_buf_get_extmarks(
+    bufnr, self.ns, {start-1, 0}, {last or start, 0}, {limit=1})
+  return #marks > 0
+end
+
+function M:reset()
+  for _, buf in ipairs(api.nvim_list_bufs()) do
+    self:remove(buf)
   end
 end
 

@@ -112,6 +112,7 @@ local M = {BlameInfo = {}, Version = {}, Repo = {}, FileProps = {}, Obj = {}, }
 
 
 
+
 local in_git_dir = function(file)
    for _, p in ipairs(vim.split(file, util.path_sep)) do
       if p == '.git' then
@@ -159,7 +160,8 @@ local JobSpec = subprocess.JobSpec
 M.command = wrap(function(args, spec, callback)
    spec = spec or {}
    spec.command = config.git_path or spec.command or 'git'
-   spec.args = spec.command == 'git' and { '--no-pager', unpack(args) } or args
+   spec.args = spec.command == 'git' and
+   { '--no-pager', '--literal-pathspecs', unpack(args) } or args
    subprocess.run_job(spec, function(_, _, stdout, stderr)
       if not spec.supress_stderr then
          if stderr then
@@ -393,6 +395,13 @@ Obj.get_show_text = function(self, revision)
       end
    end
 
+   if self.encoding ~= 'utf-8' then
+      scheduler()
+      for i, l in ipairs(stdout) do
+         stdout[i] = vim.fn.iconv(l, self.encoding, 'utf-8')
+      end
+   end
+
    return stdout, stderr
 end
 
@@ -412,16 +421,25 @@ Obj.run_blame = function(self, lines, lnum, ignore_whitespace)
          ['committer-mail'] = '<not.committed.yet>',
       }
    end
-   local results = self:command({
+
+   local args = {
       'blame',
       '--contents', '-',
       '-L', lnum .. ',+1',
       '--line-porcelain',
       self.file,
-      ignore_whitespace and '-w' or nil,
-   }, {
-      writer = lines,
-   })
+   }
+
+   if ignore_whitespace then
+      args[#args + 1] = '-w'
+   end
+
+   local ignore_file = self.repo.toplevel .. '/.git-blame-ignore-revs'
+   if uv.fs_stat(ignore_file) then
+      vim.list_extend(args, { '--ignore-revs-file', ignore_file })
+   end
+
+   local results = self:command(args, { writer = lines })
    if #results == 0 then
       return
    end
@@ -500,7 +518,7 @@ Obj.has_moved = function(self)
    end
 end
 
-Obj.new = function(file)
+Obj.new = function(file, encoding)
    if in_git_dir(file) then
       dprint('In git dir')
       return nil
@@ -508,6 +526,7 @@ Obj.new = function(file)
    local self = setmetatable({}, { __index = Obj })
 
    self.file = file
+   self.encoding = encoding
    self.repo = Repo.new(util.dirname(file))
 
    if not self.repo.gitdir then

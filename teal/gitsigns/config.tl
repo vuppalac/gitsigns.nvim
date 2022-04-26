@@ -38,7 +38,7 @@ local record M
     diff_opts: DiffOpts
     base: string
 
-    record SignsConfig
+    record SignConfig
       show_count: boolean
       hl: string
       text: string
@@ -46,7 +46,10 @@ local record M
       linehl: string
       keymaps: {string:string}
     end
-    signs: {string: SignsConfig}
+
+    type SignsConfig = {string: SignConfig}
+
+    signs: SignsConfig
 
     count_chars: {string|integer:string}
     signcolumn: boolean
@@ -71,6 +74,7 @@ local record M
     end
 
     current_line_blame_formatter: string|function(string, {string:any}, current_line_blame_formatter_opts): {{string,string}}
+    current_line_blame_formatter_nc: string|function(string, {string:any}, current_line_blame_formatter_opts): {{string,string}}
 
     record current_line_blame_opts
       virt_text: boolean
@@ -118,10 +122,10 @@ M.schema = {
     type = 'table',
     deep_extend = true,
     default = {
-      add          = {hl = 'GitSignsAdd'   , text = '│', numhl='GitSignsAddNr'   , linehl='GitSignsAddLn'    },
-      change       = {hl = 'GitSignsChange', text = '│', numhl='GitSignsChangeNr', linehl='GitSignsChangeLn' },
-      delete       = {hl = 'GitSignsDelete', text = '_', numhl='GitSignsDeleteNr', linehl='GitSignsDeleteLn' },
-      topdelete    = {hl = 'GitSignsDelete', text = '‾', numhl='GitSignsDeleteNr', linehl='GitSignsDeleteLn' },
+      add          = {hl = 'GitSignsAdd'   , text = '┃', numhl='GitSignsAddNr'   , linehl='GitSignsAddLn'    },
+      change       = {hl = 'GitSignsChange', text = '┃', numhl='GitSignsChangeNr', linehl='GitSignsChangeLn' },
+      delete       = {hl = 'GitSignsDelete', text = '▁', numhl='GitSignsDeleteNr', linehl='GitSignsDeleteLn' },
+      topdelete    = {hl = 'GitSignsDelete', text = '▔', numhl='GitSignsDeleteNr', linehl='GitSignsDeleteLn' },
       changedelete = {hl = 'GitSignsChange', text = '~', numhl='GitSignsChangeNr', linehl='GitSignsChangeLn' },
     },
     description = [[
@@ -554,6 +558,17 @@ M.schema = {
           The result of this function is passed directly to the `opts.virt_text`
           field of |nvim_buf_set_extmark| and thus must be a list of
           [text, highlight] tuples.
+    ]]
+  },
+
+  current_line_blame_formatter_nc = {
+    type = {'string', 'function'},
+    default = ' <author>',
+    description = [[
+      String or function used to format the virtual text of
+      |gitsigns-config-current_line_blame| for lines that aren't committed.
+
+      See |gitsigns-config-current_line_blame_formatter| for more information.
     ]]
   },
 

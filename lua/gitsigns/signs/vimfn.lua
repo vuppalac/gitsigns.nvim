@@ -1,31 +1,14 @@
 local fn = vim.fn
 
-local Config = require('gitsigns.config').Config
+local SignsConfig = require('gitsigns.config').Config.SignsConfig
 local config = require('gitsigns.config').config
 
-local setdefault = require('gitsigns.util').setdefault
+local emptytable = require('gitsigns.util').emptytable
 
 local B = require('gitsigns.signs.base')
 
 local M = {}
 
-local SignName = {}
-
-
-
-
-
-
-
-local sign_map = {
-   add = "GitSignsAdd",
-   delete = "GitSignsDelete",
-   change = "GitSignsChange",
-   topdelete = "GitSignsTopDelete",
-   changedelete = "GitSignsChangeDelete",
-}
-
-local sign_group = 'gitsigns_ns'
 
 
 
@@ -34,56 +17,44 @@ local sign_group = 'gitsigns_ns'
 
 
 
-
-
-local placed = {}
-local scheduled = {}
-
-setdefault(placed)
-setdefault(scheduled)
-
-function M.draw(bufnr, top, bot)
-   local to_place = {}
-   for i = top, bot do
-      if scheduled[bufnr][i] then
-         to_place[#to_place + 1] = scheduled[bufnr][i]
-         placed[bufnr][i] = scheduled[bufnr][i]
-         scheduled[bufnr][i] = nil
-      end
-   end
-   if to_place[1] then
-      fn.sign_placelist(to_place)
-   end
+local function capitalise_word(x)
+   return x:sub(1, 1):upper() .. x:sub(2)
 end
 
-local sign_define_cache = {}
+local function get_sign_name(obj, stype)
+   local cache = obj.sign_name_cache
+   if not cache[stype] then
+      cache[stype] = string.format(
+      '%s%s', 'GitSigns', capitalise_word(stype))
+   end
 
-local function sign_get(name)
-   if not sign_define_cache[name] then
+   return cache[stype]
+end
+
+local function sign_get(obj, name)
+   if not obj.sign_define_cache[name] then
       local s = fn.sign_getdefined(name)
       if not vim.tbl_isempty(s) then
-         sign_define_cache[name] = s
+         obj.sign_define_cache[name] = s
       end
    end
-   return sign_define_cache[name]
+   return obj.sign_define_cache[name]
 end
 
-local function define(name, opts, redefine)
+local function define_sign(obj, name, opts, redefine)
    if redefine then
-      sign_define_cache[name] = nil
+      obj.sign_define_cache[name] = nil
       fn.sign_undefine(name)
       fn.sign_define(name, opts)
-   elseif not sign_get(name) then
+   elseif not sign_get(obj, name) then
       fn.sign_define(name, opts)
    end
 end
 
-function M.setup(redefine)
+local function define_signs(obj, redefine)
 
-   for t, sign_name in pairs(sign_map) do
-      local cs = config.signs[t]
-
-      define(sign_name, {
+   for stype, cs in pairs(obj.config) do
+      define_sign(obj, get_sign_name(obj, stype), {
          texthl = cs.hl,
          text = config.signcolumn and cs.text or nil,
          numhl = config.numhl and cs.numhl,
@@ -92,59 +63,97 @@ function M.setup(redefine)
    end
 end
 
-function M.remove(bufnr, lnum)
-   if lnum then
-      placed[bufnr][lnum] = nil
-      scheduled[bufnr][lnum] = nil
-   else
-      placed[bufnr] = nil
-      scheduled[bufnr] = nil
-   end
-   fn.sign_unplace(sign_group, { buffer = bufnr, id = lnum })
+local group_base = 'gitsigns_vimfn_signs_'
+
+function M.new(cfg, name)
+   local self = setmetatable({}, { __index = M })
+   self.group = group_base .. (name or '')
+   self.config = cfg
+   self.placed = emptytable()
+   self.sign_name_cache = {}
+   self.sign_define_cache = {}
+
+   define_signs(self, false)
+
+   return self
 end
 
-function M.schedule(cfg, bufnr, signs)
-   if not cfg.signcolumn and not cfg.numhl and not cfg.linehl then
+function M:on_lines(_, _, _, _)
+end
+
+function M:remove(bufnr, start_lnum, end_lnum)
+   end_lnum = end_lnum or start_lnum
+
+   if start_lnum then
+      for lnum = start_lnum, end_lnum do
+         self.placed[bufnr][lnum] = nil
+         fn.sign_unplace(self.group, { buffer = bufnr, id = lnum })
+      end
+   else
+      self.placed[bufnr] = nil
+      fn.sign_unplace(self.group, { buffer = bufnr })
+   end
+end
+
+function M:add(bufnr, signs)
+   if not config.signcolumn and not config.numhl and not config.linehl then
 
       return
    end
 
-   for _, s in ipairs(signs) do
-      local stype = sign_map[s.type]
+   local to_place = {}
 
-      local cs = cfg.signs[s.type]
-      if cfg.signcolumn and cs.show_count and s.count then
+   local cfg = self.config
+   for _, s in ipairs(signs) do
+      local sign_name = get_sign_name(self, s.type)
+
+      local cs = cfg[s.type]
+      if config.signcolumn and cs.show_count and s.count then
          local count = s.count
-         local cc = cfg.count_chars
+         local cc = config.count_chars
          local count_suffix = cc[count] and tostring(count) or (cc['+'] and 'Plus') or ''
          local count_char = cc[count] or cc['+'] or ''
-         stype = stype .. count_suffix
-         define(stype, {
+         sign_name = sign_name .. count_suffix
+         define_sign(self, sign_name, {
             texthl = cs.hl,
-            text = cfg.signcolumn and cs.text .. count_char or '',
-            numhl = cfg.numhl and cs.numhl,
-            linehl = cfg.linehl and cs.linehl,
+            text = config.signcolumn and cs.text .. count_char or '',
+            numhl = config.numhl and cs.numhl,
+            linehl = config.linehl and cs.linehl,
          })
       end
 
-      if not placed[bufnr][s.lnum] then
-         scheduled[bufnr][s.lnum] = {
+      if not self.placed[bufnr][s.lnum] then
+         local sign = {
             id = s.lnum,
-            group = sign_group,
-            name = stype,
+            group = self.group,
+            name = sign_name,
             buffer = bufnr,
             lnum = s.lnum,
-            priority = cfg.sign_priority,
+            priority = config.sign_priority,
          }
+         self.placed[bufnr][s.lnum] = sign
+         to_place[#to_place + 1] = sign
       end
+   end
+
+   if #to_place > 0 then
+      fn.sign_placelist(to_place)
    end
 end
 
-function M.add(cfg, bufnr, signs)
-   M.schedule(cfg, bufnr, signs)
-   for _, s in ipairs(signs) do
-      M.draw(bufnr, s.lnum, s.lnum)
+function M:contains(bufnr, start, last)
+   for i = start + 1, last + 1 do
+      if self.placed[bufnr][i] then
+         return true
+      end
    end
+   return false
+end
+
+function M:reset()
+   self.placed = emptytable()
+   fn.sign_unplace(self.group)
+   define_signs(self, true)
 end
 
 return M

@@ -54,6 +54,7 @@ end)
 local bufwrite = void(function(bufnr, dbufnr, base, bcache)
    local buftext = util.buf_lines(dbufnr)
    bcache.git_obj:stage_lines(buftext)
+   scheduler()
    vim.bo[dbufnr].modified = false
 
 
@@ -113,7 +114,6 @@ M.run = void(function(base, vertical)
    end
 end)
 
-
 local function should_reload(bufnr)
    if not vim.bo[bufnr].modified then
       return true
@@ -146,10 +146,6 @@ M.update = throttle_by_id(void(function(bufnr)
          if bname == bufname or vim.startswith(bname, 'fugitive://') then
             if should_reload(b) then
                api.nvim_buf_call(b, function()
-
-
-
-
                   vim.cmd('doautocmd BufReadCmd')
                   vim.cmd('diffthis')
                end)

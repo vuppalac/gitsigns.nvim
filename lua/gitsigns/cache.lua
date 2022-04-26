@@ -65,6 +65,11 @@ CacheEntry.get_compare_text = function(self)
    return util.file_lines(self.compare_file)
 end
 
+CacheEntry.invalidate = function(self)
+   self.compare_text = nil
+   self.hunks = nil
+end
+
 CacheEntry.new = function(o)
    o.hunks = o.hunks
    o.staged_diffs = o.staged_diffs or {}

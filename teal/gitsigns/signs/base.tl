@@ -1,4 +1,4 @@
-local Config = require('gitsigns.config').Config
+local SignsConfig = require('gitsigns.config').Config.SignsConfig
 
 local record M
   enum SignType
@@ -15,11 +15,24 @@ local record M
     lnum: integer
   end
 
-  setup   : function(redefine: boolean)
-  draw    : function(bufnr: integer, top: integer, bot: integer): boolean
-  remove  : function(bufnr: integer, lnum: integer)
-  schedule: function(cfg: Config, bufnr: integer, signs: {M.Sign})
-  add     : function(cfg: Config, bufnr: integer, signs: {M.Sign})
+  group: string
+  config: SignsConfig
+
+  -- Used by signs/extmarks.tl
+  ns: integer
+
+  -- Used by signs/vimfn.tl
+  placed: {integer:{integer:vim.fn.SignPlaceItem}}
+  scheduled: {integer:{integer:vim.fn.SignPlaceItem}}
+  sign_define_cache: {string:table}
+  sign_name_cache: {string:string}
+
+  new      : function(cfg: SignsConfig, name: string): M
+  remove   : function(M, bufnr: integer, start_lnum: integer, end_lnum: integer)
+  add      : function(M, bufnr: integer, signs: {M.Sign})
+  contains : function(M, bufnr: integer, start: integer, last: integer): boolean
+  on_lines : function(M, bufnr: integer, first: integer, last_orig: integer, last_new: integer)
+  reset    : function(M)
 end
 
 return M

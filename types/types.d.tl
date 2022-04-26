@@ -54,7 +54,20 @@ local record api
   nvim_buf_get_changedtick: function(number): number
   nvim_buf_get_commands: function(number, {string:any}): {string:any}
   nvim_buf_get_extmark_by_id: function(number, number, number, table): {number}
-  nvim_buf_get_extmarks: function(number, number, any, any, {string:any}): any
+
+  record GetExtmarOpts
+    limit: integer
+    details: boolean
+  end
+
+  nvim_buf_get_extmarks: function(
+    buf: integer,
+    ns: integer,
+    start: integer | {integer, integer},
+    eend: integer | {integer, integer},
+    GetExtmarOpts
+  ): {{integer, integer, integer}}
+
   nvim_buf_get_keymap: function(number, string): {{string:any}}
   nvim_buf_get_lines: function(number, number, number, boolean): {string}
   nvim_buf_get_mark: function(number, string): {number}
@@ -203,6 +216,7 @@ end
 global record vim
   api: api
   record fn
+    iconv: function(string, string, string): string
     line: function(string): integer
     join: function({any}, string): string
     getpos: function(string): {integer}
@@ -294,6 +308,7 @@ global record vim
   record BufOption
     {BufOption}
     fileformat: string
+    fileencoding: string
     filetype: string
     modifiable: boolean
     modified: boolean
@@ -360,8 +375,9 @@ global record vim
 
     record FSPollObj
       userdata
-      start: function
-      stop: function
+      start: function(FSPollObj, string, integer, function)
+      stop: function(FSPollObj)
+      getpath: function(FSPollObj): string
     end
     new_fs_poll: function(): FSPollObj
 
@@ -462,15 +478,21 @@ global record vim
     end
   end
   notify: function(string, integer, table)
+  pretty_print: function(any)
+
   split: function(string, string): {string}
   split: function(string, string, boolean): {string}
 
   gsplit: function(string, string, boolean): function(): string
 
+  pesc: function(string): string
+
   startswith: function(string, string): boolean
   endswith: function(string, string): boolean
 
+  schedule_wrap: function(function()): function()
   schedule_wrap: function(function(...:any): any...): function(...:any): any...
+
   schedule: function(function)
   validate: function({string:{any}})
   trim: function(string): string

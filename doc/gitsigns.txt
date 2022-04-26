@@ -248,7 +248,7 @@ blame_line({opts})                                     *gitsigns.blame_line()*
                     {opts}   (table|nil):
                              Additional options:
                              • {full}: (boolean)
-                               Display full commit message
+                               Display full commit message with hunk.
                              • {ignore_whitespace}: (boolean)
                                Ignore whitespace when running blame.
 
@@ -434,10 +434,10 @@ signs                                                  *gitsigns-config-signs*
       Type: `table[extended]`
       Default: >
         {
-          add          = {hl = 'GitSignsAdd'   , text = '│', numhl='GitSignsAddNr'   , linehl='GitSignsAddLn'    },
-          change       = {hl = 'GitSignsChange', text = '│', numhl='GitSignsChangeNr', linehl='GitSignsChangeLn' },
-          delete       = {hl = 'GitSignsDelete', text = '_', numhl='GitSignsDeleteNr', linehl='GitSignsDeleteLn' },
-          topdelete    = {hl = 'GitSignsDelete', text = '‾', numhl='GitSignsDeleteNr', linehl='GitSignsDeleteLn' },
+          add          = {hl = 'GitSignsAdd'   , text = '┃', numhl='GitSignsAddNr'   , linehl='GitSignsAddLn'    },
+          change       = {hl = 'GitSignsChange', text = '┃', numhl='GitSignsChangeNr', linehl='GitSignsChangeLn' },
+          delete       = {hl = 'GitSignsDelete', text = '▁', numhl='GitSignsDeleteNr', linehl='GitSignsDeleteLn' },
+          topdelete    = {hl = 'GitSignsDelete', text = '▔', numhl='GitSignsDeleteNr', linehl='GitSignsDeleteLn' },
           changedelete = {hl = 'GitSignsChange', text = '~', numhl='GitSignsChangeNr', linehl='GitSignsChangeLn' },
         }
 <
@@ -786,6 +786,15 @@ current_line_blame_formatter    *gitsigns-config-current_line_blame_formatter*
           The result of this function is passed directly to the `opts.virt_text`
           field of |nvim_buf_set_extmark| and thus must be a list of
           [text, highlight] tuples.
+
+current_line_blame_formatter_nc
+                             *gitsigns-config-current_line_blame_formatter_nc*
+      Type: `string|function`, Default: `' <author>'`
+
+      String or function used to format the virtual text of
+      |gitsigns-config-current_line_blame| for lines that aren't committed.
+
+      See |gitsigns-config-current_line_blame_formatter| for more information.
 
 trouble                                              *gitsigns-config-trouble*
       Type: `boolean`, Default: true if installed
