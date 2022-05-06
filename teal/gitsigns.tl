@@ -33,6 +33,9 @@ local record M
   detach     : function(bufnr: integer, _keep_signs: boolean)
   detach_all : function()
   attach     : function(cbuf: integer, trigger: string)
+
+  -- Exposed for tests
+  parse_fugitive_uri: function(name: string): string, string
 end
 
 --- Detach Gitsigns from all buffers it is attached to.
@@ -82,13 +85,6 @@ local function parse_fugitive_uri(name: string): string, string
     name = root_path .. sub_module_path .. real_path
   end
   return name, commit
-end
-
-if _TEST then
-  local path, commit = parse_fugitive_uri(
-    'fugitive:///home/path/to/project/.git//1b441b947c4bc9a59db428f229456619051dd133/subfolder/to/a/file.txt')
-  assert(path == '/home/path/to/project/subfolder/to/a/file.txt', string.format('GOT %s', path))
-  assert(commit == '1b441b947c4bc9a59db428f229456619051dd133', string.format('GOT %s', commit))
 end
 
 local function get_buf_path(bufnr: integer): string, string
@@ -323,7 +319,7 @@ end
 
 local function setup_command()
   nvim.command('Gitsigns', function(params: api.UserCmdParams)
-    local fargs = vim.split(params.args, '%s+')
+    local fargs = require('gitsigns.argparse').parse_args(params.args)
     run_func({params.range, params.line1, params.line2}, unpack(fargs))
   end, { force = true, nargs = '+', range = true, complete = complete })
 end
@@ -451,6 +447,10 @@ M.setup = void(function(cfg: Config)
   -- (like vim-grepper)
   autocmd('DirChanged', debounce_trailing(100, manager.update_cwd_head))
 end)
+
+if _TEST then
+  M.parse_fugitive_uri = parse_fugitive_uri
+end
 
 return setmetatable(M, {
   __index = function(_, f: string): any
