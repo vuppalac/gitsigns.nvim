@@ -32,8 +32,8 @@ local uv = vim.loop
 local signs: Signs
 
 local record M
-  update           : function(integer, CacheEntry, boolean)
-  update_debounced : function( bufnr: integer, CacheEntry)
+  update           : function(bufnr: integer, CacheEntry)
+  update_debounced : function(bufnr: integer, CacheEntry)
   on_lines         : function(buf: integer, first: integer, last_orig: integer, last_new: integer): boolean
   watch_gitdir     : function(bufnr: integer, gitdir: string): uv.FSPollObj
   update_cwd_head  : function()
@@ -84,10 +84,9 @@ M.on_lines = function(buf: integer, first: integer, last_orig: integer, last_new
 
   -- Signs in changed regions get invalidated so we need to force a redraw if
   -- any signs get removed.
-  if bcache.hunks and signs:contains(buf, first, last_new) then
-    -- invalidate hunks to force a sign redraw
-    -- TODO(lewis6991): Force redraw without having to re-diff
-    bcache.hunks = nil
+  if signs:contains(buf, first, last_new) then
+    -- Force a sign redraw on the next update (fixes #521)
+    bcache.force_next_update = true
   end
 
   M.update_debounced(buf, cache[buf])
@@ -187,26 +186,30 @@ local function show_deleted(bufnr: integer)
           if rline > 1 then
             break
           end
-          vline[#vline+1] = { line:sub(last_ecol, scol-1), 'GitsignsDeleteVirtLn'}
-          vline[#vline+1] = { line:sub(scol, ecol-1), 'GitsignsDeleteVirtLnInline'}
+          vline[#vline+1] = { line:sub(last_ecol, scol-1), 'GitSignsDeleteVirtLn'}
+          vline[#vline+1] = { line:sub(scol, ecol-1), 'GitSignsDeleteVirtLnInline'}
           last_ecol = ecol
         end
       end
 
       if #line > 0 then
-        vline[#vline+1] = { line:sub(last_ecol, -1), 'GitsignsDeleteVirtLn'}
+        vline[#vline+1] = { line:sub(last_ecol, -1), 'GitSignsDeleteVirtLn'}
       end
 
       -- Add extra padding so the entire line is highlighted
       local padding = string.rep(' ', VIRT_LINE_LEN-#line)
-      vline[#vline+1] = { padding, 'GitsignsDeleteVirtLn'}
+      vline[#vline+1] = { padding, 'GitSignsDeleteVirtLn'}
 
       virt_lines[i] = vline
     end
 
-    api.nvim_buf_set_extmark(bufnr, ns_rm, hunk.added.start-1, -1, {
+    local topdelete = hunk.added.start == 0 and hunk.type == 'delete'
+
+    local row = topdelete and 0 or hunk.added.start - 1
+    api.nvim_buf_set_extmark(bufnr, ns_rm, row, -1, {
       virt_lines       = virt_lines,
-      virt_lines_above = hunk.type ~= 'delete',
+      -- TODO(lewis6991): Note virt_lines_above doesn't work on row 0 neovim/neovim#16166
+      virt_lines_above = hunk.type ~= 'delete' or topdelete,
     })
   end
 end
@@ -224,8 +227,6 @@ M.update = throttle_by_id(function(bufnr: integer, bcache: CacheEntry)
     eprint('Cache for buffer '..bufnr..' was nil')
     return
   end
-  local old_hunks = bcache.hunks
-  bcache.hunks = nil
 
   scheduler_if_buf_valid(bufnr)
   local buftext = util.buf_lines(bufnr)
@@ -235,15 +236,19 @@ M.update = throttle_by_id(function(bufnr: integer, bcache: CacheEntry)
     bcache.compare_text = git_obj:get_show_text(bcache:get_compare_rev())
   end
 
+  local old_hunks = bcache.hunks
   bcache.hunks = run_diff(bcache.compare_text, buftext)
 
   scheduler_if_buf_valid(bufnr)
-  if gs_hunks.compare_heads(bcache.hunks, old_hunks) then
+  -- Note the decoration provider may have invalidated bcache.hunks at this
+  -- point
+  if bcache.force_next_update or gs_hunks.compare_heads(bcache.hunks, old_hunks) then
     -- Apply signs to the window. Other signs will be added by the decoration
     -- provider as they are drawn.
     apply_win_signs(bufnr, bcache.hunks, vim.fn.line('w0'), vim.fn.line('w$'), true)
 
     show_deleted(bufnr)
+    bcache.force_next_update = false
   end
   local summary = gs_hunks.get_summary(bcache.hunks)
   summary.head = git_obj.repo.abbrev_head
@@ -252,7 +257,7 @@ M.update = throttle_by_id(function(bufnr: integer, bcache: CacheEntry)
   update_cnt = update_cnt + 1
 
   dprintf('updates: %s, jobs: %s', update_cnt, subprocess.job_cnt)
-end)
+end, true)
 
 M.detach = function(bufnr: integer, keep_signs: boolean)
   if not keep_signs then
@@ -436,7 +441,7 @@ M.setup = function()
   })
 
   signs = Signs.new(config.signs)
-  M.update_debounced = debounce_trailing(config.update_debounce, void(M.update)) as function(integer, CacheEntry)
+  M.update_debounced = debounce_trailing(config.update_debounce, void(M.update))
 end
 
 return M

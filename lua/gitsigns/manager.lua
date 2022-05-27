@@ -84,10 +84,9 @@ M.on_lines = function(buf, first, last_orig, last_new)
 
 
 
-   if bcache.hunks and signs:contains(buf, first, last_new) then
+   if signs:contains(buf, first, last_new) then
 
-
-      bcache.hunks = nil
+      bcache.force_next_update = true
    end
 
    M.update_debounced(buf, cache[buf])
@@ -187,26 +186,30 @@ local function show_deleted(bufnr)
                if rline > 1 then
                   break
                end
-               vline[#vline + 1] = { line:sub(last_ecol, scol - 1), 'GitsignsDeleteVirtLn' }
-               vline[#vline + 1] = { line:sub(scol, ecol - 1), 'GitsignsDeleteVirtLnInline' }
+               vline[#vline + 1] = { line:sub(last_ecol, scol - 1), 'GitSignsDeleteVirtLn' }
+               vline[#vline + 1] = { line:sub(scol, ecol - 1), 'GitSignsDeleteVirtLnInline' }
                last_ecol = ecol
             end
          end
 
          if #line > 0 then
-            vline[#vline + 1] = { line:sub(last_ecol, -1), 'GitsignsDeleteVirtLn' }
+            vline[#vline + 1] = { line:sub(last_ecol, -1), 'GitSignsDeleteVirtLn' }
          end
 
 
          local padding = string.rep(' ', VIRT_LINE_LEN - #line)
-         vline[#vline + 1] = { padding, 'GitsignsDeleteVirtLn' }
+         vline[#vline + 1] = { padding, 'GitSignsDeleteVirtLn' }
 
          virt_lines[i] = vline
       end
 
-      api.nvim_buf_set_extmark(bufnr, ns_rm, hunk.added.start - 1, -1, {
+      local topdelete = hunk.added.start == 0 and hunk.type == 'delete'
+
+      local row = topdelete and 0 or hunk.added.start - 1
+      api.nvim_buf_set_extmark(bufnr, ns_rm, row, -1, {
          virt_lines = virt_lines,
-         virt_lines_above = hunk.type ~= 'delete',
+
+         virt_lines_above = hunk.type ~= 'delete' or topdelete,
       })
    end
 end
@@ -224,8 +227,6 @@ M.update = throttle_by_id(function(bufnr, bcache)
       eprint('Cache for buffer ' .. bufnr .. ' was nil')
       return
    end
-   local old_hunks = bcache.hunks
-   bcache.hunks = nil
 
    scheduler_if_buf_valid(bufnr)
    local buftext = util.buf_lines(bufnr)
@@ -235,15 +236,19 @@ M.update = throttle_by_id(function(bufnr, bcache)
       bcache.compare_text = git_obj:get_show_text(bcache:get_compare_rev())
    end
 
+   local old_hunks = bcache.hunks
    bcache.hunks = run_diff(bcache.compare_text, buftext)
 
    scheduler_if_buf_valid(bufnr)
-   if gs_hunks.compare_heads(bcache.hunks, old_hunks) then
+
+
+   if bcache.force_next_update or gs_hunks.compare_heads(bcache.hunks, old_hunks) then
 
 
       apply_win_signs(bufnr, bcache.hunks, vim.fn.line('w0'), vim.fn.line('w$'), true)
 
       show_deleted(bufnr)
+      bcache.force_next_update = false
    end
    local summary = gs_hunks.get_summary(bcache.hunks)
    summary.head = git_obj.repo.abbrev_head
@@ -252,7 +257,7 @@ M.update = throttle_by_id(function(bufnr, bcache)
    update_cnt = update_cnt + 1
 
    dprintf('updates: %s, jobs: %s', update_cnt, subprocess.job_cnt)
-end)
+end, true)
 
 M.detach = function(bufnr, keep_signs)
    if not keep_signs then
