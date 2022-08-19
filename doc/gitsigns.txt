@@ -518,6 +518,24 @@ keymaps                                              *gitsigns-config-keymaps*
       to `{}`, and |gitsigns-config-on_attach| can instead be used to define
       mappings.
 
+worktrees                                          *gitsigns-config-worktrees*
+      Type: `table`, Default: `nil`
+
+      Detached working trees.
+
+      Array of tables with the keys `gitdir` and `toplevel`.
+
+      If normal attaching fails, then each entry in the table is attempted
+      with the work tree details set.
+
+      Example: >
+        worktrees = {
+          {
+            toplevel = vim.env.HOME,
+            gitdir = vim.env.HOME .. '/projects/dotfiles/.git'
+          }
+        }
+
 on_attach                                          *gitsigns-config-on_attach*
       Type: `function`, Default: `nil`
 
@@ -541,9 +559,10 @@ on_attach                                          *gitsigns-config-on_attach*
 <
 
 watch_gitdir                                    *gitsigns-config-watch_gitdir*
-      Type: `table`
+      Type: `table[extended]`
       Default: >
         {
+          enable = true,
           interval = 1000,
           follow_files = true
         }
@@ -553,6 +572,9 @@ watch_gitdir                                    *gitsigns-config-watch_gitdir*
       update signs.
 
       Fields: ~
+        • `enable`:
+            Whether the watcher is enabled.
+
         • `interval`:
             Interval the watcher waits between polls of the gitdir in milliseconds.
 

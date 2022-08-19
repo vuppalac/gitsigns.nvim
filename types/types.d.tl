@@ -253,6 +253,7 @@ global record vim
     executable: function(string): integer
     expand: function(string): string
     foldclosed: function(integer): integer
+    foldclosedend: function(integer): integer
     getcwd: function(): string
     input: function(string, string): string
 
@@ -577,6 +578,12 @@ global record vim
 
   record ui
     input: function({string:any}, function(string))
+    record SelectOpts<T>
+      prompt: string
+      format_item: function(T): string
+      kind: string
+    end
+    select: function<T>({T}, SelectOpts<T>, on_choice: function(T, idx: integer))
   end
 
   record VersionDetails

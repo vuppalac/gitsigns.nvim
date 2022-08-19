@@ -95,6 +95,11 @@ end
 local ns = api.nvim_create_namespace('gitsigns')
 
 local function apply_word_diff(bufnr, row)
+
+   if vim.fn.foldclosed(row + 1) ~= -1 then
+      return
+   end
+
    if not cache[bufnr] or not cache[bufnr].hunks then
       return
    end
@@ -300,6 +305,10 @@ end
 
 
 M.watch_gitdir = function(bufnr, gitdir)
+   if not config.watch_gitdir.enable then
+      return
+   end
+
    dprintf('Watching git dir')
    local w = uv.new_fs_poll()
    w:start(gitdir, config.watch_gitdir.interval, void(function(err)
@@ -380,7 +389,9 @@ M.update_cwd_head = void(function()
    end
 
    if not head or not gitdir then
-      _, gitdir, head = git.get_repo_info(cwd)
+      local info = git.get_repo_info(cwd)
+      gitdir = info.gitdir
+      head = info.abbrev_head
    end
 
    scheduler()
@@ -409,7 +420,7 @@ M.update_cwd_head = void(function()
       end
       dprint('Git cwd dir update')
 
-      local _, _, new_head = git.get_repo_info(cwd)
+      local new_head = git.get_repo_info(cwd).abbrev_head
       scheduler()
       update_cwd_head_var(new_head)
    end))
