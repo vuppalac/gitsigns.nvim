@@ -15,7 +15,7 @@ local startswith = vim.startswith
 
 local dprint = require("gitsigns.debug").dprint
 
-local GJobSpec = {}
+
 
 
 
@@ -165,7 +165,7 @@ local function check_version(version)
    return true
 end
 
-local JobSpec = subprocess.JobSpec
+
 
 M.command = wrap(function(args, spec, callback)
    spec = spec or {}
@@ -482,9 +482,9 @@ Obj.run_blame = function(self, lines, lnum, ignore_whitespace)
 
       return {
          author = 'Not Committed Yet',
-         ['author-mail'] = '<not.committed.yet>',
+         ['author_mail'] = '<not.committed.yet>',
          committer = 'Not Committed Yet',
-         ['committer-mail'] = '<not.committed.yet>',
+         ['committer_mail'] = '<not.committed.yet>',
       }
    end
 
