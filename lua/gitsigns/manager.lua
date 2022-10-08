@@ -58,6 +58,9 @@ local function apply_win_signs(bufnr, hunks, top, bot, clear)
    end
 
 
+   hunks = hunks or {}
+
+
 
 
 
@@ -65,7 +68,7 @@ local function apply_win_signs(bufnr, hunks, top, bot, clear)
       signs:add(bufnr, gs_hunks.calc_signs(hunks[1], hunks[1].added.start, hunks[1].added.start))
    end
 
-   for _, hunk in ipairs(hunks or {}) do
+   for _, hunk in ipairs(hunks) do
       if top <= hunk.vend and bot >= hunk.added.start then
          signs:add(bufnr, gs_hunks.calc_signs(hunk, top, bot))
       end
@@ -136,20 +139,31 @@ local function apply_word_diff(bufnr, row)
 
    for _, region in ipairs(added_regions) do
       local rtype, scol, ecol = region[2], region[3] - 1, region[4] - 1
-      if scol < cols then
-         if ecol > cols then
-            ecol = cols
-         end
-         api.nvim_buf_set_extmark(bufnr, ns, row, scol, {
-            end_col = ecol,
-            hl_group = rtype == 'add' and 'GitSignsAddLnInline' or
-            rtype == 'change' and 'GitSignsChangeLnInline' or
-            'GitSignsDeleteLnInline',
-            ephemeral = true,
-            priority = 1000,
-         })
-         api.nvim__buf_redraw_range(bufnr, row, row + 1)
+      if ecol == scol then
+
+         ecol = scol + 1
       end
+
+      local hl_group = rtype == 'add' and 'GitSignsAddLnInline' or
+      rtype == 'change' and 'GitSignsChangeLnInline' or
+      'GitSignsDeleteLnInline'
+
+      local opts = {
+         ephemeral = true,
+         priority = 1000,
+      }
+
+      if ecol > cols and ecol == scol + 1 then
+
+         opts.virt_text = { { ' ', hl_group } }
+         opts.virt_text_pos = 'overlay'
+      else
+         opts.end_col = ecol
+         opts.hl_group = hl_group
+      end
+
+      api.nvim_buf_set_extmark(bufnr, ns, row, scol, opts)
+      api.nvim__buf_redraw_range(bufnr, row, row + 1)
    end
 end
 
@@ -253,6 +267,11 @@ M.update = throttle_by_id(function(bufnr, bcache)
 
       show_deleted(bufnr)
       bcache.force_next_update = false
+
+      api.nvim_exec_autocmds('User', {
+         pattern = 'GitSignsUpdate',
+         modeline = false,
+      })
    end
    local summary = gs_hunks.get_summary(bcache.hunks)
    summary.head = git_obj.repo.abbrev_head
@@ -359,14 +378,6 @@ end
 
 local cwd_watcher
 
-local function update_cwd_head_var(head)
-   if head then
-      api.nvim_set_var('gitsigns_head', head)
-   else
-      pcall(api.nvim_del_var, 'gitsigns_head')
-   end
-end
-
 M.update_cwd_head = void(function()
    if cwd_watcher then
       cwd_watcher:stop()
@@ -394,7 +405,7 @@ M.update_cwd_head = void(function()
    end
 
    scheduler()
-   update_cwd_head_var(head)
+   vim.g.gitsigns_head = head
 
    if not gitdir then
       return
@@ -421,7 +432,7 @@ M.update_cwd_head = void(function()
 
       local new_head = git.get_repo_info(cwd).abbrev_head
       scheduler()
-      update_cwd_head_var(new_head)
+      vim.g.gitsigns_head = new_head
    end))
 
 end)

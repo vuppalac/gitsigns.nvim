@@ -1,5 +1,3 @@
-local nvim = require('gitsigns.nvim')
-
 local popup = {HlMark = {}, }
 
 
@@ -111,7 +109,8 @@ end
 
 local function close_all_but(id)
    for _, winid in ipairs(api.nvim_list_wins()) do
-      if vim.w[winid].gitsigns_preview ~= id then
+      if vim.w[winid].gitsigns_preview ~= nil and
+         vim.w[winid].gitsigns_preview ~= id then
          pcall(api.nvim_win_close, winid, true)
       end
    end
@@ -155,10 +154,10 @@ function popup.create0(lines, opts, id)
 
 
    local group = 'gitsigns_popup'
-   nvim.augroup(group)
+   api.nvim_create_augroup(group, {})
    local old_cursor = api.nvim_win_get_cursor(0)
 
-   nvim.autocmd({ 'CursorMoved', 'CursorMovedI' }, {
+   api.nvim_create_autocmd({ 'CursorMoved', 'CursorMovedI' }, {
       group = group,
       callback = function()
          local cursor = api.nvim_win_get_cursor(0)
@@ -166,7 +165,7 @@ function popup.create0(lines, opts, id)
          if (old_cursor[1] ~= cursor[1] or old_cursor[2] ~= cursor[2]) and
             api.nvim_get_current_win() ~= winid then
 
-            nvim.augroup(group)
+            api.nvim_create_augroup(group, {})
             pcall(api.nvim_win_close, winid, true)
             return
          end

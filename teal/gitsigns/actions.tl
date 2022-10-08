@@ -611,10 +611,10 @@ end
 
 local function noautocmd(f: function()): function()
   return function()
-    local ei = api.nvim_get_option('eventignore')
-    api.nvim_set_option('eventignore', 'all')
+    local ei = vim.o.eventignore
+    vim.o.eventignore = 'all'
     f()
-    api.nvim_set_option('eventignore', ei)
+    vim.o.eventignore = ei
   end
 end
 
@@ -896,6 +896,8 @@ end
 --- Attributes: ~
 ---     {async}
 M.diffthis = function(base: string, opts: DiffthisOpts)
+  -- TODO(lewis6991): can't pass numbers as strings from the command line
+  base = tostring(base)
   opts = opts or {}
   local diffthis = require('gitsigns.diffthis')
   if not opts.vertical then
