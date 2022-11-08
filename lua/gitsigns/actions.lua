@@ -38,6 +38,15 @@ local current_buf = api.nvim_get_current_buf
 
 
 
+
+
+
+
+
+
+
+
+
 local M = {QFListOpts = {}, }
 
 
@@ -88,6 +97,8 @@ local M = {QFListOpts = {}, }
 
 
 local C = {}
+
+local ns_inline = api.nvim_create_namespace('gitsigns_preview_inline')
 
 
 
@@ -221,6 +232,20 @@ local function get_range(params)
    return range
 end
 
+local function get_hunks(bufnr, bcache, greedy)
+   local hunks
+
+   if greedy then
+
+      local buftext = util.buf_lines(bufnr)
+      hunks = run_diff(bcache.compare_text, buftext, false)
+      scheduler()
+   else
+      hunks = bcache.hunks
+   end
+
+   return hunks
+end
 
 
 
@@ -235,7 +260,14 @@ end
 
 
 
-M.stage_hunk = mk_repeatable(void(function(range)
+
+
+
+
+
+
+M.stage_hunk = mk_repeatable(void(function(range, opts)
+   opts = opts or {}
    local bufnr = current_buf()
    local bcache = cache[bufnr]
    if not bcache then
@@ -247,12 +279,13 @@ M.stage_hunk = mk_repeatable(void(function(range)
       return
    end
 
+   local hunks = get_hunks(bufnr, bcache, opts.greedy ~= false)
    local hunk
 
    if range then
       table.sort(range)
       local top, bot = range[1], range[2]
-      hunk = gs_hunks.create_partial_hunk(bcache.hunks, top, bot)
+      hunk = gs_hunks.create_partial_hunk(hunks, top, bot)
       hunk.added.lines = api.nvim_buf_get_lines(bufnr, top - 1, bot, false)
       hunk.removed.lines = vim.list_slice(
       bcache.compare_text,
@@ -260,7 +293,7 @@ M.stage_hunk = mk_repeatable(void(function(range)
       hunk.removed.start + hunk.removed.count - 1)
 
    else
-      hunk = get_cursor_hunk(bufnr, bcache.hunks)
+      hunk = get_cursor_hunk(bufnr, hunks)
    end
 
    if not hunk then
@@ -288,19 +321,28 @@ end
 
 
 
-M.reset_hunk = mk_repeatable(function(range)
+
+
+
+
+
+
+
+M.reset_hunk = mk_repeatable(void(function(range, opts)
+   opts = opts or {}
    local bufnr = current_buf()
    local bcache = cache[bufnr]
    if not bcache then
       return
    end
 
+   local hunks = get_hunks(bufnr, bcache, opts.greedy ~= false)
    local hunk
 
    if range then
       table.sort(range)
       local top, bot = range[1], range[2]
-      hunk = gs_hunks.create_partial_hunk(bcache.hunks, top, bot)
+      hunk = gs_hunks.create_partial_hunk(hunks, top, bot)
       hunk.added.lines = api.nvim_buf_get_lines(bufnr, top - 1, bot, false)
       hunk.removed.lines = vim.list_slice(
       bcache.compare_text,
@@ -308,7 +350,7 @@ M.reset_hunk = mk_repeatable(function(range)
       hunk.removed.start + hunk.removed.count - 1)
 
    else
-      hunk = get_cursor_hunk(bufnr)
+      hunk = get_cursor_hunk(bufnr, hunks)
    end
 
    if not hunk then
@@ -324,7 +366,7 @@ M.reset_hunk = mk_repeatable(function(range)
       lend = hunk.added.start - 1 + hunk.added.count
    end
    util.set_lines(bufnr, lstart, lend, hunk.removed.lines)
-end)
+end))
 
 C.reset_hunk = function(_pos_args, _named_args, params)
    M.reset_hunk(get_range(params))
@@ -441,6 +483,10 @@ local function process_nav_opts(opts)
    if opts.foldopen == nil then
       opts.foldopen = vim.tbl_contains(vim.opt.foldopen:get(), 'search')
    end
+
+   if opts.greedy == nil then
+      opts.greedy = true
+   end
 end
 
 
@@ -452,17 +498,23 @@ local function defer(fn)
    end
 end
 
-local function nav_hunk(opts)
+local function has_preview_inline(bufnr)
+   return #api.nvim_buf_get_extmarks(bufnr, ns_inline, 0, -1, { limit = 1 }) > 0
+end
+
+local nav_hunk = void(function(opts)
    process_nav_opts(opts)
-   local bcache = cache[current_buf()]
+   local bufnr = current_buf()
+   local bcache = cache[bufnr]
    if not bcache then
       return
    end
 
-   local hunks = bcache.hunks
+   local hunks = get_hunks(bufnr, bcache, opts.greedy)
+
    if not hunks or vim.tbl_isempty(hunks) then
       if opts.navigation_message then
-         vim.api.nvim_echo({ { 'No hunks', 'WarningMsg' } }, false, {})
+         api.nvim_echo({ { 'No hunks', 'WarningMsg' } }, false, {})
       end
       return
    end
@@ -472,7 +524,7 @@ local function nav_hunk(opts)
 
    if hunk == nil then
       if opts.navigation_message then
-         vim.api.nvim_echo({ { 'No more hunks', 'WarningMsg' } }, false, {})
+         api.nvim_echo({ { 'No more hunks', 'WarningMsg' } }, false, {})
       end
       return
    end
@@ -492,14 +544,21 @@ local function nav_hunk(opts)
 
 
          defer(M.preview_hunk)
+      elseif has_preview_inline(bufnr) then
+         defer(M.preview_hunk_inline)
       end
 
       if index ~= nil and opts.navigation_message then
-         vim.api.nvim_echo({ { string.format('Hunk %d of %d', index, #hunks), 'None' } }, false, {})
+         api.nvim_echo({ { string.format('Hunk %d of %d', index, #hunks), 'None' } }, false, {})
       end
 
    end
-end
+end)
+
+
+
+
+
 
 
 
@@ -523,6 +582,8 @@ M.next_hunk = function(opts)
    opts.forwards = true
    nav_hunk(opts)
 end
+
+
 
 
 
@@ -663,14 +724,12 @@ M.preview_hunk_inline = function()
       return
    end
 
-   local nsp = api.nvim_create_namespace('gitsigns_preview_inline')
-
-   manager.show_added(bufnr, nsp, hunk)
-   manager.show_deleted(bufnr, nsp, hunk)
+   manager.show_added(bufnr, ns_inline, hunk)
+   manager.show_deleted(bufnr, ns_inline, hunk)
 
    api.nvim_create_autocmd({ 'CursorMoved', 'InsertEnter' }, {
       callback = function()
-         api.nvim_buf_clear_namespace(bufnr, nsp, 0, -1)
+         api.nvim_buf_clear_namespace(bufnr, ns_inline, 0, -1)
       end,
       once = true,
    })
@@ -709,6 +768,7 @@ M.get_hunks = function(bufnr)
    bufnr = bufnr or current_buf()
    if not cache[bufnr] then return end
    local ret = {}
+
    for _, h in ipairs(cache[bufnr].hunks or {}) do
       ret[#ret + 1] = {
          head = h.head,
@@ -728,7 +788,7 @@ local function get_blame_hunk(repo, info)
       a = repo:get_show_text(info.previous_sha .. ':' .. info.previous_filename)
    end
    local b = repo:get_show_text(info.sha .. ':' .. info.filename)
-   local hunks = run_diff(a, b)
+   local hunks = run_diff(a, b, false)
    local hunk, i = gs_hunks.find_hunk(info.orig_lnum, hunks)
    return hunk, i, #hunks
 end

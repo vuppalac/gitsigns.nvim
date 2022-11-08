@@ -341,10 +341,12 @@ global record vim
     strdisplaywidth: function(string, integer): integer
     stridx: function(haystack: string, needle: string, start: integer): integer
     string: function(any): string
+    systemlist: function({string}): {string}
     tempname: function(): string
     type: function(any): integer
   end
 
+  call: function(string, ...:any)
   cmd: function(string): any
 
   deepcopy: function<T>(T): T
@@ -408,6 +410,7 @@ global record vim
     gitsigns_status_dict: {string:any}
     gitsigns_status: string
     gitsigns_blame_line_dict: {string:any}
+    gitsigns_blame_line: string
   end
 
   b: BufVar

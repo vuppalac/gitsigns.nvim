@@ -31,6 +31,7 @@ local record NavHunkOpts
   navigation_message: boolean
   foldopen: boolean
   preview: boolean
+  greedy: boolean
 end
 
 local record BlameOpts
@@ -38,10 +39,18 @@ local record BlameOpts
   ignore_whitespace: boolean
 end
 
+local record StageHunkOpts
+  greedy: boolean
+end
+
+local record ResetHunkOpts
+  greedy: boolean
+end
+
 local record M
-  stage_hunk         : function({integer, integer})
+  stage_hunk         : function({integer, integer}, StageHunkOpts)
   undo_stage_hunk    : function()
-  reset_hunk         : function({integer, integer})
+  reset_hunk         : function({integer, integer}, ResetHunkOpts)
 
   stage_buffer       : function()
   reset_buffer       : function()
@@ -88,6 +97,8 @@ local type CmdFunc = function(pos_args: {any}, named_args: {string:any}, params:
 
 -- Variations of functions from M which are used for the Gitsigns command
 local C: {string:CmdFunc} = {}
+
+local ns_inline = api.nvim_create_namespace('gitsigns_preview_inline')
 
 --- Toggle |gitsigns-config-signbooleancolumn|
 ---
@@ -221,6 +232,21 @@ local function get_range(params: api.UserCmdParams): {integer, integer}
   return range
 end
 
+local function get_hunks(bufnr: integer, bcache: CacheEntry, greedy: boolean): {Hunk}
+  local hunks: {Hunk}
+
+  if greedy then
+    -- Re-run the diff without linematch
+    local buftext = util.buf_lines(bufnr)
+    hunks = run_diff(bcache.compare_text, buftext, false)
+    scheduler()
+  else
+    hunks = bcache.hunks
+  end
+
+  return hunks
+end
+
 --- Stage the hunk at the cursor position, or all lines in the
 --- given range. If {range} is provided, all lines in the given
 --- range are staged. This supports partial-hunks, meaning if a
@@ -232,10 +258,16 @@ end
 ---
 --- Parameters:~
 ---     {range} table|nil List-like table of two integers making
----     up the line range from which you want to stage the hunks.
----     If running via command line, then this is taken from the
----     command modifiers.
-M.stage_hunk = mk_repeatable(void(function(range: {integer, integer})
+---             up the line range from which you want to stage the hunks.
+---             If running via command line, then this is taken from the
+---             command modifiers.
+---     {opts}  table|nil Additional options:
+---             • {greedy}: (boolean)
+---               Stage all contiguous hunks. Only useful if 'diff_opts'
+---               contains `linematch`. Defaults to `true`.
+---
+M.stage_hunk = mk_repeatable(void(function(range: {integer, integer}, opts: StageHunkOpts)
+  opts = opts or {}
   local bufnr = current_buf()
   local bcache = cache[bufnr]
   if not bcache then
@@ -247,12 +279,13 @@ M.stage_hunk = mk_repeatable(void(function(range: {integer, integer})
     return
   end
 
+  local hunks = get_hunks(bufnr, bcache, opts.greedy ~= false)
   local hunk: Hunk
 
   if range then
     table.sort(range)
     local top, bot = range[1], range[2]
-    hunk = gs_hunks.create_partial_hunk(bcache.hunks, top, bot)
+    hunk = gs_hunks.create_partial_hunk(hunks, top, bot)
     hunk.added.lines = api.nvim_buf_get_lines(bufnr, top-1, bot, false)
     hunk.removed.lines = vim.list_slice(
       bcache.compare_text,
@@ -260,7 +293,7 @@ M.stage_hunk = mk_repeatable(void(function(range: {integer, integer})
       hunk.removed.start + hunk.removed.count - 1
     )
   else
-    hunk = get_cursor_hunk(bufnr, bcache.hunks)
+    hunk = get_cursor_hunk(bufnr, hunks)
   end
 
   if not hunk then
@@ -287,20 +320,29 @@ end
 ---
 --- Parameters:~
 ---     {range} table|nil List-like table of two integers making
----     up the line range from which you want to reset the hunks.
-M.reset_hunk = mk_repeatable(function(range: {integer, integer})
+---             up the line range from which you want to reset the hunks.
+---             If running via command line, then this is taken from the
+---             command modifiers.
+---     {opts}  table|nil Additional options:
+---             • {greedy}: (boolean)
+---               Stage all contiguous hunks. Only useful if 'diff_opts'
+---               contains `linematch`. Defaults to `true`.
+---
+M.reset_hunk = mk_repeatable(void(function(range: {integer, integer}, opts: ResetHunkOpts)
+  opts = opts or {}
   local bufnr = current_buf()
   local bcache = cache[bufnr]
   if not bcache then
     return
   end
 
+  local hunks = get_hunks(bufnr, bcache, opts.greedy ~= false)
   local hunk: Hunk
 
   if range then
     table.sort(range)
     local top, bot = range[1], range[2]
-    hunk = gs_hunks.create_partial_hunk(bcache.hunks, top, bot)
+    hunk = gs_hunks.create_partial_hunk(hunks, top, bot)
     hunk.added.lines = api.nvim_buf_get_lines(bufnr, top-1, bot, false)
     hunk.removed.lines = vim.list_slice(
       bcache.compare_text,
@@ -308,7 +350,7 @@ M.reset_hunk = mk_repeatable(function(range: {integer, integer})
       hunk.removed.start + hunk.removed.count - 1
     )
   else
-    hunk = get_cursor_hunk(bufnr)
+    hunk = get_cursor_hunk(bufnr, hunks)
   end
 
   if not hunk then
@@ -324,7 +366,7 @@ M.reset_hunk = mk_repeatable(function(range: {integer, integer})
     lend = hunk.added.start - 1 + hunk.added.count
   end
   util.set_lines(bufnr, lstart, lend, hunk.removed.lines)
-end)
+end))
 
 C.reset_hunk = function(_pos_args: {any}, _named_args: {string:any}, params: api.UserCmdParams)
   M.reset_hunk(get_range(params))
@@ -441,6 +483,10 @@ local function process_nav_opts(opts: NavHunkOpts)
   if opts.foldopen == nil then
     opts.foldopen = vim.tbl_contains(vim.opt.foldopen:get(), 'search')
   end
+
+  if opts.greedy == nil then
+    opts.greedy = true
+  end
 end
 
 -- Defer function to the next main event
@@ -452,17 +498,23 @@ local function defer(fn: function)
   end
 end
 
-local function nav_hunk(opts: NavHunkOpts)
+local function has_preview_inline(bufnr: integer): boolean
+  return #api.nvim_buf_get_extmarks(bufnr, ns_inline, 0, -1, {limit=1}) > 0
+end
+
+local nav_hunk = void(function(opts: NavHunkOpts)
   process_nav_opts(opts)
-  local bcache = cache[current_buf()]
+  local bufnr = current_buf()
+  local bcache = cache[bufnr]
   if not bcache then
     return
   end
 
-  local hunks = bcache.hunks
+  local hunks = get_hunks(bufnr, bcache, opts.greedy)
+
   if not hunks or vim.tbl_isempty(hunks) then
     if opts.navigation_message then
-      vim.api.nvim_echo({{'No hunks', 'WarningMsg'}}, false, {})
+      api.nvim_echo({{'No hunks', 'WarningMsg'}}, false, {})
     end
     return
   end
@@ -472,7 +524,7 @@ local function nav_hunk(opts: NavHunkOpts)
 
   if hunk == nil then
     if opts.navigation_message then
-        vim.api.nvim_echo({{'No more hunks', 'WarningMsg'}}, false, {})
+        api.nvim_echo({{'No more hunks', 'WarningMsg'}}, false, {})
     end
     return
   end
@@ -492,16 +544,20 @@ local function nav_hunk(opts: NavHunkOpts)
       -- Use defer so the cursor change can settle, otherwise the popup might
       -- appear in the old position
       defer(M.preview_hunk)
+    elseif has_preview_inline(bufnr) then
+      defer(M.preview_hunk_inline)
     end
 
     if index ~= nil and opts.navigation_message then
-        vim.api.nvim_echo({{string.format('Hunk %d of %d', index, #hunks), 'None'}}, false, {})
+        api.nvim_echo({{string.format('Hunk %d of %d', index, #hunks), 'None'}}, false, {})
     end
 
   end
-end
+end)
 
---- Jump to the next hunk in the current buffer.
+--- Jump to the next hunk in the current buffer. If a hunk preview
+--- (popup or inline) was previously opened, it will be re-opened
+--- at the next hunk.
 ---
 --- Parameters: ~
 ---     {opts}  table|nil Configuration table. Keys:
@@ -518,13 +574,18 @@ end
 ---             • {preview}: (boolean)
 ---               Automatically open preview_hunk() upon navigating
 ---               to a hunk.
+---             • {greedy}: (boolean)
+---               Only navigate between non-contiguous hunks. Only useful if
+---               'diff_opts' contains `linematch`. Defaults to `true`.
 M.next_hunk = function(opts: NavHunkOpts)
   opts = opts or {}
   opts.forwards = true
   nav_hunk(opts)
 end
 
---- Jump to the previous hunk in the current buffer.
+--- Jump to the previous hunk in the current buffer. If a hunk preview
+--- (popup or inline) was previously opened, it will be re-opened
+--- at the previous hunk.
 ---
 --- Parameters: ~
 ---     See |gitsigns.next_hunk()|.
@@ -663,14 +724,12 @@ M.preview_hunk_inline = function()
     return
   end
 
-  local nsp = api.nvim_create_namespace('gitsigns_preview_inline')
-
-  manager.show_added(bufnr, nsp, hunk)
-  manager.show_deleted(bufnr, nsp, hunk)
+  manager.show_added(bufnr, ns_inline, hunk)
+  manager.show_deleted(bufnr, ns_inline, hunk)
 
   api.nvim_create_autocmd({ 'CursorMoved', 'InsertEnter' }, {
     callback = function()
-      api.nvim_buf_clear_namespace(bufnr, nsp, 0, -1)
+      api.nvim_buf_clear_namespace(bufnr, ns_inline, 0, -1)
     end,
     once = true
   })
@@ -709,6 +768,7 @@ M.get_hunks = function(bufnr: integer): {Hunk_Public}
   bufnr = bufnr or current_buf()
   if not cache[bufnr] then return end
   local ret = {}
+  -- TODO(lewis6991): allow this to accept a greedy option
   for _, h in ipairs(cache[bufnr].hunks or {}) do
     ret[#ret+1] = {
       head    = h.head,
@@ -728,7 +788,7 @@ local function get_blame_hunk(repo: git.Repo, info: git.BlameInfo): Hunk, intege
     a = repo:get_show_text(info.previous_sha..':'..info.previous_filename)
   end
   local b = repo:get_show_text(info.sha..':'..info.filename)
-  local hunks = run_diff(a, b)
+  local hunks = run_diff(a, b, false)
   local hunk, i = gs_hunks.find_hunk(info.orig_lnum, hunks)
   return hunk, i, #hunks
 end
