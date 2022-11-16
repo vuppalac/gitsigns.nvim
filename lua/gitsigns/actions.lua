@@ -98,7 +98,18 @@ local M = {QFListOpts = {}, }
 
 local C = {}
 
+
+
+local CP = {}
+
 local ns_inline = api.nvim_create_namespace('gitsigns_preview_inline')
+
+local function complete_heads(arglead)
+   local all = vim.fn.systemlist({ 'git', 'rev-parse', '--symbolic', '--branches', '--tags', '--remotes' })
+   return vim.tbl_filter(function(x)
+      return vim.startswith(x, arglead)
+   end, all)
+end
 
 
 
@@ -168,7 +179,8 @@ M.toggle_word_diff = function(value)
    else
       config.word_diff = not config.word_diff
    end
-   M.refresh()
+
+   api.nvim__buf_redraw_range(0, vim.fn.line('w0') - 1, vim.fn.line('w$'))
    return config.word_diff
 end
 
@@ -308,7 +320,7 @@ M.stage_hunk = mk_repeatable(void(function(range, opts)
    update(bufnr)
 end))
 
-C.stage_hunk = function(_pos_args, _named_args, params)
+C.stage_hunk = function(_, params)
    M.stage_hunk(get_range(params))
 end
 
@@ -368,7 +380,7 @@ M.reset_hunk = mk_repeatable(void(function(range, opts)
    util.set_lines(bufnr, lstart, lend, hunk.removed.lines)
 end))
 
-C.reset_hunk = function(_pos_args, _named_args, params)
+C.reset_hunk = function(_, params)
    M.reset_hunk(get_range(params))
 end
 
@@ -940,12 +952,22 @@ M.change_base = void(function(base, global)
    end
 end)
 
+C.change_base = function(args, _)
+   M.change_base(args[1], (args[2] or args.global))
+end
+
+CP.change_base = complete_heads
+
 
 
 
 
 M.reset_base = function(global)
    M.change_base(nil, global)
+end
+
+C.reset_base = function(args, _)
+   M.change_base(nil, (args[1] or args.global))
 end
 
 
@@ -993,10 +1015,11 @@ M.diffthis = function(base, opts)
    diffthis.diffthis(base, opts)
 end
 
-C.diffthis = function(pos_args, named_args, params)
+C.diffthis = function(args, params)
+
    local opts = {
-      vertical = named_args.vertical,
-      split = named_args.split,
+      vertical = args.vertical,
+      split = args.split,
    }
 
    if params.smods then
@@ -1008,8 +1031,10 @@ C.diffthis = function(pos_args, named_args, params)
       end
    end
 
-   M.diffthis(pos_args[1], opts)
+   M.diffthis(args[1], opts)
 end
+
+CP.diffthis = complete_heads
 
 
 
@@ -1040,6 +1065,8 @@ M.show = function(revision)
    local diffthis = require('gitsigns.diffthis')
    diffthis.show(revision)
 end
+
+CP.show = complete_heads
 
 local function hunks_to_qflist(buf_or_filename, hunks, qflist)
    for i, hunk in ipairs(hunks) do
@@ -1231,8 +1258,12 @@ M.refresh = void(function()
    end
 end)
 
-function M.get_cmd_func(name)
+function M._get_cmd_func(name)
    return C[name]
+end
+
+function M._get_cmp_func(name)
+   return CP[name]
 end
 
 return M
