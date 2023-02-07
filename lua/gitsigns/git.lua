@@ -292,7 +292,7 @@ function M.get_repo_info(path, cmd, gitdir, toplevel)
    local results = git_command(args, {
       command = config.git_path or cmd or 'git',
       suppress_stderr = true,
-      cwd = path,
+      cwd = toplevel or path,
    })
 
    local ret = {
