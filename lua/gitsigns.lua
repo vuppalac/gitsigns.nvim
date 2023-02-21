@@ -45,25 +45,25 @@ local M = {GitContext = {}, }
 
 local GitContext = M.GitContext
 
-
+--- Detach Gitsigns from all buffers it is attached to.
 function M.detach_all()
    for k, _ in pairs(cache) do
       M.detach(k)
    end
 end
 
-
-
-
-
-
+--- Detach Gitsigns from the buffer {bufnr}. If {bufnr} is not
+--- provided then the current buffer is used.
+---
+--- Parameters: ~
+---       {bufnr}   (number): Buffer number
 function M.detach(bufnr, _keep_signs)
-
-
-
-
-
-
+   -- When this is called interactively (with no arguments) we want to remove all
+   -- the signs, however if called via a detach event (due to nvim_buf_attach)
+   -- then we don't want to clear the signs in case the buffer is just being
+   -- updated due to the file externally changing. When this happens a detach and
+   -- attach event happen in sequence and so we keep the old signs to stop the
+   -- sign column width moving about between updates.
    bufnr = bufnr or current_buf()
    dprint('Detached')
    local bcache = cache[bufnr]
@@ -74,13 +74,13 @@ function M.detach(bufnr, _keep_signs)
 
    manager.detach(bufnr, _keep_signs)
 
-
+   -- Clear status variables
    Status:clear(bufnr)
 
    cache:destroy(bufnr)
 end
 
-
+-- @return (string, string) Tuple of buffer name and commit
 local function parse_fugitive_uri(name)
    if vim.fn.exists('*FugitiveReal') == 0 then
       dprint("Fugitive not installed")
@@ -90,18 +90,18 @@ local function parse_fugitive_uri(name)
    local path = vim.fn.FugitiveReal(name)
    local commit = vim.fn.FugitiveParse(name)[1]:match('([^:]+):.*')
    if commit == '0' then
-
+      -- '0' means the index so clear commit so we attach normally
       commit = nil
    end
    return path, commit
 end
 
 local function parse_gitsigns_uri(name)
-
+   -- TODO(lewis6991): Support submodules
    local _, _, root_path, commit, rel_path = 
    name:find([[^gitsigns://(.*)/%.git/(.*):(.*)]])
    if commit == ':0' then
-
+      -- ':0' means the index so clear commit so we attach normally
       commit = nil
    end
    if root_path then
@@ -145,8 +145,8 @@ local vimgrep_running = false
 
 local function on_lines(_, bufnr, _, first, last_orig, last_new, byte_count)
    if first == last_orig and last_orig == last_new and byte_count == 0 then
-
-
+      -- on_lines can be called twice for undo events; ignore the second
+      -- call which indicates no changes.
       return
    end
    return manager.on_lines(bufnr, first, last_orig, last_new)
@@ -193,9 +193,9 @@ local function try_worktrees(_bufnr, file, encoding)
    end
 end
 
-
-
-
+-- Ensure attaches cannot be interleaved.
+-- Since attaches are asynchronous we need to make sure an attach isn't
+-- performed whilst another one is in progress.
 local attach_throttled = throttle_by_id(function(cbuf, ctx, aucmd)
    local __FUNC__ = 'attach'
    if vimgrep_running then
@@ -295,8 +295,8 @@ local attach_throttled = throttle_by_id(function(cbuf, ctx, aucmd)
       return
    end
 
-
-
+   -- On windows os.tmpname() crashes in callback threads so initialise this
+   -- variable on the main thread.
    scheduler()
 
    if config.on_attach and config.on_attach(cbuf) == false then
@@ -317,15 +317,15 @@ local attach_throttled = throttle_by_id(function(cbuf, ctx, aucmd)
       return
    end
 
-
-
+   -- Make sure to attach before the first update (which is async) so we pick up
+   -- changes from BufReadCmd.
    api.nvim_buf_attach(cbuf, false, {
       on_lines = on_lines,
       on_reload = on_reload,
       on_detach = on_detach,
    })
 
-
+   -- Initial update
    manager.update(cbuf, cache[cbuf])
 
    if config.keymaps and not vim.tbl_isempty(config.keymaps) then
@@ -333,28 +333,28 @@ local attach_throttled = throttle_by_id(function(cbuf, ctx, aucmd)
    end
 end)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+--- Attach Gitsigns to the buffer.
+---
+--- Attributes: ~
+---       {async}
+---
+--- Parameters: ~
+---       {bufnr}   (number): Buffer number
+---       {ctx}      (table|nil):
+---                     Git context data that may optionally be used to attach to any
+---                     buffer that represents a real git object.
+---                     • {file}: (string)
+---                        Path to the file represented by the buffer, relative to the
+---                        top-level.
+---                     • {toplevel}: (string)
+---                        Path to the top-level of the parent git repository.
+---                     • {gitdir}: (string)
+---                        Path to the git directory of the parent git repository
+---                        (typically the ".git/" directory).
+---                     • {commit}: (string)
+---                        The git revision that the file belongs to.
+---                     • {base}: (string|nil)
+---                        The git revision that the file should be compared to.
 M.attach = void(function(bufnr, ctx, _trigger)
    attach_throttled(bufnr or current_buf(), ctx, _trigger)
 end)
@@ -402,14 +402,14 @@ local function on_or_after_vimenter(fn)
    end
 end
 
-
-
-
-
-
-
-
-
+--- Setup and start Gitsigns.
+---
+--- Attributes: ~
+---       {async}
+---
+--- Parameters: ~
+---       {cfg} Table object containing configuration for
+---       Gitsigns. See |gitsigns-usage| for more details.
 M.setup = void(function(cfg)
    gs_config.build(cfg)
 
@@ -436,9 +436,9 @@ M.setup = void(function(cfg)
 
    Status.formatter = config.status_formatter
 
-
-
-
+   -- Make sure highlights are setup on or after VimEnter so the colorscheme is
+   -- loaded. Do not set them up with vim.schedule as this removes the intro
+   -- message.
    on_or_after_vimenter(hl.setup_highlights)
 
    setup_cli()
@@ -447,7 +447,7 @@ M.setup = void(function(cfg)
    git.set_version(config._git_version)
    scheduler()
 
-
+   -- Attach to all open buffers
    for _, buf in ipairs(api.nvim_list_bufs()) do
       if api.nvim_buf_is_loaded(buf) and
          api.nvim_buf_get_name(buf) ~= '' then
@@ -471,8 +471,8 @@ M.setup = void(function(cfg)
       end, })
 
 
-
-
+   -- vimpgrep creates and deletes lots of buffers so attaching to each one will
+   -- waste lots of resource and even slow down vimgrep.
    autocmd('QuickFixCmdPre', {
       pattern = '*vimgrep*',
       callback = function()
@@ -491,8 +491,8 @@ M.setup = void(function(cfg)
 
    scheduler()
    manager.update_cwd_head()
-
-
+   -- Need to debounce in case some plugin changes the cwd too often
+   -- (like vim-grepper)
    autocmd('DirChanged', debounce_trailing(100, manager.update_cwd_head))
 end)
 
