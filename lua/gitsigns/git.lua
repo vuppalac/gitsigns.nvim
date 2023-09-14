@@ -73,7 +73,8 @@ local function parse_version(version)
   if parts[3] == 'GIT' then
     ret.patch = 0
   else
-    ret.patch = assert(tonumber(parts[3]))
+    local patch_ver = vim.split(parts[3], '-')
+    ret.patch = assert(tonumber(patch_ver[1]))
   end
 
   return ret
@@ -128,6 +129,8 @@ end
 --- @field cwd? string
 --- @field writer? string[] | string
 --- @field suppress_stderr? boolean
+--- @field raw? boolean Do not strip trailing newlines from stdout
+--- @field args? string[]
 
 --- @param args string[]
 --- @param spec? Gitsigns.Git.JobSpec
@@ -164,10 +167,12 @@ local git_command = async.create(function(args, spec)
 
   local stdout_lines = vim.split(stdout or '', '\n', { plain = true })
 
-  -- If stdout ends with a newline, then remove the final empty string after
-  -- the split
-  if stdout_lines[#stdout_lines] == '' then
-    stdout_lines[#stdout_lines] = nil
+  if not spec.raw then
+    -- If stdout ends with a newline, then remove the final empty string after
+    -- the split
+    if stdout_lines[#stdout_lines] == '' then
+      stdout_lines[#stdout_lines] = nil
+    end
   end
 
   if log.verbose then
@@ -399,7 +404,7 @@ end
 --- @param encoding? string
 --- @return string[] stdout, string? stderr
 function Repo:get_show_text(object, encoding)
-  local stdout, stderr = self:command({ 'show', object }, { suppress_stderr = true })
+  local stdout, stderr = self:command({ 'show', object }, { raw = true, suppress_stderr = true })
 
   if encoding and encoding ~= 'utf-8' and iconv_supported(encoding) then
     stdout[1] = strip_bom(stdout[1], encoding)
@@ -548,7 +553,8 @@ function Obj:get_show_text(revision)
 
   if not self.i_crlf and self.w_crlf then
     -- Add cr
-    for i = 1, #stdout do
+    -- Do not add cr to the newline at the end of file
+    for i = 1, #stdout - 1 do
       stdout[i] = stdout[i] .. '\r'
     end
   end
@@ -580,6 +586,13 @@ end
 --- @field previous_filename string
 --- @field previous_sha string
 --- @field filename string
+---
+--- Custom fields
+--- @field body? string[]
+--- @field hunk_no? integer
+--- @field num_hunks? integer
+--- @field hunk? string[]
+--- @field hunk_head? string
 
 --- @param lines string[]
 --- @param lnum integer
