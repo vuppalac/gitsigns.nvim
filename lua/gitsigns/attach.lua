@@ -10,7 +10,6 @@ local hl = require('gitsigns.highlight')
 
 local gs_cache = require('gitsigns.cache')
 local cache = gs_cache.cache
-local CacheEntry = gs_cache.CacheEntry
 local Status = require('gitsigns.status')
 
 local gs_config = require('gitsigns.config')
@@ -26,7 +25,7 @@ local uv = vim.loop
 
 local M = {}
 
-local vimgrep_running = false
+local attach_disabled = false
 
 --- @param name string
 --- @return string? buffer
@@ -111,6 +110,7 @@ end
 --- @param bufnr integer
 local function on_reload(_, bufnr)
   local __FUNC__ = 'on_reload'
+  cache[bufnr]:invalidate()
   dprint('Reload')
   manager.update_debounced(bufnr)
 end
@@ -118,6 +118,10 @@ end
 --- @param _ 'detach'
 --- @param bufnr integer
 local function on_detach(_, bufnr)
+  api.nvim_clear_autocmds({
+    group = 'gitsigns',
+    buffer = bufnr,
+  })
   M.detach(bufnr, true)
 end
 
@@ -180,7 +184,7 @@ function M._setup()
 
   api.nvim_create_autocmd('OptionSet', {
     group = 'gitsigns',
-    pattern = 'fileformat',
+    pattern = { 'fileformat', 'bomb', 'eol' },
     callback = function()
       require('gitsigns.actions').refresh()
     end,
@@ -192,7 +196,7 @@ function M._setup()
     group = 'gitsigns',
     pattern = '*vimgrep*',
     callback = function()
-      vimgrep_running = true
+      attach_disabled = true
     end,
   })
 
@@ -200,7 +204,7 @@ function M._setup()
     group = 'gitsigns',
     pattern = '*vimgrep*',
     callback = function()
-      vimgrep_running = false
+      attach_disabled = false
     end,
   })
 
@@ -230,7 +234,7 @@ local attach_throttled = throttle_by_id(function(cbuf, ctx, aucmd)
 
   M._setup()
 
-  if vimgrep_running then
+  if attach_disabled then
     dprint('attaching is disabled')
     return
   end
@@ -336,7 +340,8 @@ local attach_throttled = throttle_by_id(function(cbuf, ctx, aucmd)
     return
   end
 
-  cache[cbuf] = CacheEntry.new({
+  cache[cbuf] = gs_cache.new({
+    bufnr = cbuf,
     base = ctx and ctx.base or config.base,
     file = file,
     commit = commit,
@@ -359,6 +364,14 @@ local attach_throttled = throttle_by_id(function(cbuf, ctx, aucmd)
     on_lines = on_lines,
     on_reload = on_reload,
     on_detach = on_detach,
+  })
+
+  api.nvim_create_autocmd('BufWrite', {
+    group = 'gitsigns',
+    buffer = cbuf,
+    callback = function()
+      manager.update_debounced(cbuf)
+    end,
   })
 
   -- Initial update

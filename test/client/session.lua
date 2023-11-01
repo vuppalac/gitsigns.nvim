@@ -1,11 +1,11 @@
-local uv = require('luv')
+local uv = vim.loop
 local MsgpackRpcStream = require('test.client.msgpack_rpc_stream')
 
---- @class Session
+--- @class NvimSession
 --- @field private _msgpack_rpc_stream MsgpackRpcStream
 --- @field private _pending_messages string[]
---- @field private _prepare uv_prepare_t
---- @field private _timer uv_timer_t
+--- @field private _prepare uv.uv_prepare_t
+--- @field private _timer uv.uv_timer_t
 --- @field private _is_running boolean
 local Session = {}
 Session.__index = Session
@@ -28,8 +28,8 @@ local function resume(co, ...)
 end
 
 local function coroutine_exec(func, ...)
-  local args = {...}
-  local on_complete
+  local args = { ... }
+  local on_complete --- @type function?
 
   if #args > 0 and type(args[#args]) == 'function' then
     -- completion callback
@@ -53,21 +53,13 @@ function Session.new(stream)
     _pending_messages = {},
     _prepare = uv.new_prepare(),
     _timer = uv.new_timer(),
-    _is_running = false
+    _is_running = false,
   }, Session)
 end
 
+--- @param timeout integer
+--- @return string
 function Session:next_message(timeout)
-  local function on_request(method, args, response)
-    table.insert(self._pending_messages, {'request', method, args, response})
-    uv.stop()
-  end
-
-  local function on_notification(method, args)
-    table.insert(self._pending_messages, {'notification', method, args})
-    uv.stop()
-  end
-
   if self._is_running then
     error('Event loop already running')
   end
@@ -76,16 +68,26 @@ function Session:next_message(timeout)
     return table.remove(self._pending_messages, 1)
   end
 
+  local function on_request(method, args, response)
+    table.insert(self._pending_messages, { 'request', method, args, response })
+    uv.stop()
+  end
+
+  local function on_notification(method, args)
+    table.insert(self._pending_messages, { 'notification', method, args })
+    uv.stop()
+  end
+
   self:_run(on_request, on_notification, timeout)
   return table.remove(self._pending_messages, 1)
 end
 
 function Session:notify(method, ...)
-  self._msgpack_rpc_stream:write(method, {...})
+  self._msgpack_rpc_stream:write(method, { ... })
 end
 
 function Session:request(method, ...)
-  local args = {...}
+  local args = { ... }
   local err, result
   if self._is_running then
     err, result = self:_yielding_request(method, args)
@@ -100,6 +102,10 @@ function Session:request(method, ...)
   return true, result
 end
 
+---@param request_cb fun()?
+---@param notification_cb fun()?
+---@param setup_cb fun()?
+---@param timeout integer?
 function Session:run(request_cb, notification_cb, setup_cb, timeout)
   local function on_request(method, args, response)
     coroutine_exec(request_cb, method, args, function(status, result, flag)
@@ -139,13 +145,20 @@ function Session:stop()
 end
 
 function Session:close(signal)
-  if not self._timer:is_closing() then self._timer:close() end
-  if not self._prepare:is_closing() then self._prepare:close() end
+  if not self._timer:is_closing() then
+    self._timer:close()
+  end
+  if not self._prepare:is_closing() then
+    self._prepare:close()
+  end
   self._msgpack_rpc_stream:close(signal)
 end
 
 --- @param method string
+--- @param args any[]
+--- @return any
 function Session:_yielding_request(method, args)
+  --- @param co thread
   return coroutine.yield(function(co)
     self._msgpack_rpc_stream:write(method, args, function(err, result)
       resume(co, err, result)
@@ -158,11 +171,11 @@ function Session:_blocking_request(method, args)
   local err, result
 
   local function on_request(method_, args_, response)
-    table.insert(self._pending_messages, {'request', method_, args_, response})
+    table.insert(self._pending_messages, { 'request', method_, args_, response })
   end
 
   local function on_notification(method_, args_)
-    table.insert(self._pending_messages, {'notification', method_, args_})
+    table.insert(self._pending_messages, { 'notification', method_, args_ })
   end
 
   self._msgpack_rpc_stream:write(method, args, function(e, r)
@@ -189,7 +202,7 @@ function Session:_run(request_cb, notification_cb, timeout)
   end
   self._msgpack_rpc_stream:read_start(request_cb, notification_cb, function()
     uv.stop()
-    self.eof_err = {1, "EOF was received from Nvim. Likely the Nvim process crashed."}
+    self.eof_err = { 1, 'EOF was received from Nvim. Likely the Nvim process crashed.' }
   end)
   uv.run()
   self._prepare:stop()

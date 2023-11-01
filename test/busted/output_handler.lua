@@ -1,57 +1,77 @@
-local pretty = require 'pl.pretty'
-local global_helpers = require('test.helpers')
-
--- Colors are disabled by default. #15610
-local colors = require 'term.colors'
-
 return function(options)
-  local busted = require 'busted'
-  local handler = require 'busted.outputHandlers.base'()
+  local busted = require('busted')
+  local handler = require('busted.outputHandlers.base')()
+  local colors = require('term.colors')
+  local pretty = require('pl.pretty')
 
+  --- @type table<string,fun(s:string): string>
   local c = {
-    succ = function(s) return colors.bright(colors.green(s)) end,
-    skip = function(s) return colors.bright(colors.yellow(s)) end,
-    fail = function(s) return colors.bright(colors.magenta(s)) end,
-    errr = function(s) return colors.bright(colors.red(s)) end,
+    succ = function(s)
+      return colors.bright(colors.green(s))
+    end,
+    skip = function(s)
+      return colors.bright(colors.yellow(s))
+    end,
+    fail = function(s)
+      return colors.bright(colors.magenta(s))
+    end,
+    errr = function(s)
+      return colors.bright(colors.red(s))
+    end,
     test = tostring,
     file = colors.cyan,
     time = colors.dim,
     note = colors.yellow,
-    sect = function(s) return colors.green(colors.dim(s)) end,
+    sect = function(s)
+      return colors.green(colors.dim(s))
+    end,
     nmbr = colors.bright,
   }
 
   local repeatSuiteString = '\nRepeating all tests (run %d of %d) . . .\n\n'
-  local randomizeString  = c.note('Note: Randomizing test order with a seed of %d.\n')
-  local globalSetup      = c.sect('--------') .. ' Global test environment setup.\n'
-  local fileStartString  = c.sect('--------') .. ' Running tests from ' .. c.file('%s') .. '\n'
-  local runString        = c.sect('RUN     ') .. ' ' .. c.test('%s') .. ': '
-  local successString    = c.succ('OK')   .. '\n'
-  local skippedString    = c.skip('SKIP') .. '\n'
-  local failureString    = c.fail('FAIL') .. '\n'
-  local errorString      = c.errr('ERR')  .. '\n'
-  local fileEndString    = c.sect('--------') .. ' '.. c.nmbr('%d') .. ' %s from ' .. c.file('%s') .. ' ' .. c.time('(%.2f ms total)') .. '\n\n'
-  local globalTeardown   = c.sect('--------') .. ' Global test environment teardown.\n'
-  local suiteEndString   = c.sect('========') .. ' ' .. c.nmbr('%d') .. ' %s from ' .. c.nmbr('%d') .. ' test %s ran. ' .. c.time('(%.2f ms total)') .. '\n'
-  local successStatus    = c.succ('PASSED  ') .. ' ' .. c.nmbr('%d') .. ' %s.\n'
-  local timeString       = c.time('%.2f ms')
+  local randomizeString = c.note('Note: Randomizing test order with a seed of %d.\n')
+  local globalSetup = c.sect('--------') .. ' Global test environment setup.\n'
+  local fileStartString = c.sect('--------') .. ' Running tests from ' .. c.file('%s') .. '\n'
+  local runString = c.sect('RUN     ') .. ' ' .. c.test('%s') .. ': '
+  local successString = c.succ('OK') .. '\n'
+  local skippedString = c.skip('SKIP') .. '\n'
+  local failureString = c.fail('FAIL') .. '\n'
+  local errorString = c.errr('ERR') .. '\n'
+  local fileEndString = c.sect('--------')
+    .. ' '
+    .. c.nmbr('%d')
+    .. ' %s from '
+    .. c.file('%s')
+    .. ' '
+    .. c.time('(%.2f ms total)')
+    .. '\n\n'
+  local globalTeardown = c.sect('--------') .. ' Global test environment teardown.\n'
+  local suiteEndString = string.format(
+    '%s %s %%s from %s test %%s ran. %s\n',
+    c.sect('========'),
+    c.nmbr('%d'),
+    c.nmbr('%d'),
+    c.time('(%.2f ms total)')
+  )
+  local successStatus = c.succ('PASSED  ') .. ' ' .. c.nmbr('%d') .. ' %s.\n'
+  local timeString = c.time('%.2f ms')
 
   local summaryStrings = {
     skipped = {
       header = c.skip('SKIPPED ') .. ' ' .. c.nmbr('%d') .. ' %s, listed below:\n',
-      test   = c.skip('SKIPPED ') .. ' %s\n',
+      test = c.skip('SKIPPED ') .. ' %s\n',
       footer = ' ' .. c.nmbr('%d') .. ' SKIPPED %s\n',
     },
 
     failure = {
       header = c.fail('FAILED  ') .. ' ' .. c.nmbr('%d') .. ' %s, listed below:\n',
-      test   = c.fail('FAILED  ') .. ' %s\n',
+      test = c.fail('FAILED  ') .. ' %s\n',
       footer = ' ' .. c.nmbr('%d') .. ' FAILED %s\n',
     },
 
     error = {
       header = c.errr('ERROR   ') .. ' ' .. c.nmbr('%d') .. ' %s, listed below:\n',
-      test   = c.errr('ERROR   ') .. ' %s\n',
+      test = c.errr('ERROR   ') .. ' %s\n',
       footer = ' ' .. c.nmbr('%d') .. ' %s\n',
     },
   }
@@ -98,8 +118,10 @@ return function(options)
   local getFileLine = function(element)
     local fileline = ''
     if element.trace or element.trace.short_src then
-      fileline = colors.cyan(element.trace.short_src) .. ' @ ' ..
-                 colors.cyan(element.trace.currentline) .. ': '
+      fileline = colors.cyan(element.trace.short_src)
+        .. ' @ '
+        .. colors.cyan(element.trace.currentline)
+        .. ': '
     end
     return fileline
   end
@@ -125,30 +147,29 @@ return function(options)
   end
 
   local getSummary = function(status, count)
-    local string = ''
     local footer = summaryStrings[status].footer
     if count > 0 and footer then
       local tests = (count == 1 and 'TEST' or 'TESTS')
       local errors = (count == 1 and 'ERROR' or 'ERRORS')
-      string = footer:format(count, status == 'error' and errors or tests)
+      return footer:format(count, status == 'error' and errors or tests)
     end
-    return string
+    return ''
   end
 
   local getSummaryString = function()
     local tests = (successCount == 1 and 'test' or 'tests')
-    local string = successStatus:format(successCount, tests)
+    return table.concat({
+      successStatus:format(successCount, tests),
 
-    string = string .. getTestList('skipped', skippedCount, handler.pendings, pendingDescription)
-    string = string .. getTestList('failure', failureCount, handler.failures, failureDescription)
-    string = string .. getTestList('error', errorCount, handler.errors, failureDescription)
+      getTestList('skipped', skippedCount, handler.pendings, pendingDescription),
+      getTestList('failure', failureCount, handler.failures, failureDescription),
+      getTestList('error', errorCount, handler.errors, failureDescription),
 
-    string = string .. ((skippedCount + failureCount + errorCount) > 0 and '\n' or '')
-    string = string .. getSummary('skipped', skippedCount)
-    string = string .. getSummary('failure', failureCount)
-    string = string .. getSummary('error', errorCount)
-
-    return string
+      ((skippedCount + failureCount + errorCount) > 0 and '\n' or ''),
+      getSummary('skipped', skippedCount),
+      getSummary('failure', failureCount),
+      getSummary('error', errorCount),
+    })
   end
 
   handler.suiteReset = function()
@@ -186,14 +207,11 @@ return function(options)
 
   handler.suiteEnd = function(suite, _count, _total)
     local elapsedTime_ms = getElapsedTime(suite)
-    local tests = (testCount == 1 and 'test' or 'tests')
-    local files = (fileCount == 1 and 'file' or 'files')
+    local tests = testCount == 1 and 'test' or 'tests'
+    local files = fileCount == 1 and 'file' or 'files'
     io.write(globalTeardown)
     io.write(suiteEndString:format(testCount, tests, fileCount, files, elapsedTime_ms))
     io.write(getSummaryString())
-    if failureCount > 0 or errorCount > 0 then
-      io.write(global_helpers.read_nvim_log(nil, true))
-    end
     io.flush()
 
     return nil, true
@@ -208,16 +226,17 @@ return function(options)
 
   handler.fileEnd = function(file)
     local elapsedTime_ms = getElapsedTime(file)
-    local tests = (fileTestCount == 1 and 'test' or 'tests')
+    local tests = fileTestCount == 1 and 'test' or 'tests'
     fileCount = fileCount + 1
-    io.write(fileEndString:format(fileTestCount, tests, vim.fs.normalize(file.name), elapsedTime_ms))
+    io.write(
+      fileEndString:format(fileTestCount, tests, vim.fs.normalize(file.name), elapsedTime_ms)
+    )
     io.flush()
     return nil, true
   end
 
   handler.testStart = function(element, _parent)
-    local testid = _G._nvim_test_id or ''
-    local desc = ('%s %s'):format(testid, handler.getFullName(element))
+    local desc = (' %s'):format(handler.getFullName(element))
     io.write(runString:format(desc))
     io.flush()
 
@@ -230,7 +249,7 @@ return function(options)
   end
 
   handler.testEnd = function(element, _parent, status, _debug)
-    local string
+    local string --- @type string
 
     fileTestCount = fileTestCount + 1
     testCount = testCount + 1
@@ -247,7 +266,7 @@ return function(options)
       errorCount = errorCount + 1
       string = errorString .. failureDescription(handler.errors[#handler.errors])
     else
-      string = "unexpected test status! ("..status..")"
+      string = 'unexpected test status! (' .. status .. ')'
     end
     write_status(element, string)
 

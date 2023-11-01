@@ -13,7 +13,7 @@ local log = require('gitsigns.debug.log')
 local dprint = log.dprint
 local dprintf = log.dprintf
 
-local subprocess = require('gitsigns.subprocess')
+local system = require('gitsigns.system')
 local util = require('gitsigns.util')
 local run_diff = require('gitsigns.diff')
 
@@ -68,10 +68,32 @@ local function apply_win_signs(bufnr, top, bot, clear)
     return
   end
 
-  local untracked = bcache.git_obj.object_name == nil
+  local untracked = bcache.git_obj.object_name == nil and not bcache.base
   apply_win_signs0(bufnr, signs_normal, bcache.hunks, top, bot, clear, untracked)
   if signs_staged then
     apply_win_signs0(bufnr, signs_staged, bcache.hunks_staged, top, bot, clear, false)
+  end
+end
+
+--- @param blame table<integer,Gitsigns.BlameInfo?>?
+--- @param first integer
+--- @param last_orig integer
+--- @param last_new integer
+local function on_lines_blame(blame, first, last_orig, last_new)
+  if not blame then
+    return
+  end
+
+  if last_new ~= last_orig then
+    if last_new < last_orig then
+      util.list_remove(blame, last_new, last_orig)
+    else
+      util.list_insert(blame, last_orig, last_new)
+    end
+  end
+
+  for i = math.min(first + 1, last_new), math.max(first + 1, last_new) do
+    blame[i] = nil
   end
 end
 
@@ -86,6 +108,8 @@ function M.on_lines(buf, first, last_orig, last_new)
     dprint('Cache for buffer was nil. Detaching')
     return true
   end
+
+  on_lines_blame(bcache.blame, first, last_orig, last_new)
 
   signs_normal:on_lines(buf, first, last_orig, last_new)
   if signs_staged then
@@ -322,6 +346,8 @@ function M.show_deleted_in_float(bufnr, nsd, hunk)
     vim.cmd('normal ' .. vim.api.nvim_replace_termcodes('z<CR>', true, false, true))
   end)
 
+  local last_lnum = api.nvim_buf_line_count(bufnr)
+
   -- Apply highlights
 
   for i = hunk.removed.start, hunk.removed.start + hunk.removed.count do
@@ -329,6 +355,7 @@ function M.show_deleted_in_float(bufnr, nsd, hunk)
       hl_group = 'GitSignsDeleteVirtLn',
       hl_eol = true,
       end_row = i,
+      strict = i == last_lnum,
       priority = 1000,
     })
   end
@@ -372,8 +399,13 @@ function M.show_added(bufnr, nsw, hunk)
 
   for _, region in ipairs(added_regions) do
     local offset, rtype, scol, ecol = region[1] - 1, region[2], region[3] - 1, region[4] - 1
+
+    -- Special case to handle cr at eol in buffer but not in show text
+    local cr_at_eol_change = rtype == 'change' and vim.endswith(hunk.added.lines[offset + 1], '\r')
+
     api.nvim_buf_set_extmark(bufnr, nsw, start_row + offset, scol, {
       end_col = ecol,
+      strict = not cr_at_eol_change,
       hl_group = rtype == 'add' and 'GitSignsAddInline'
         or rtype == 'change' and 'GitSignsChangeInline'
         or 'GitSignsDeleteInline',
@@ -433,8 +465,12 @@ M.update = throttle_by_id(function(bufnr)
 
   local git_obj = bcache.git_obj
 
-  if not bcache.compare_text or config._refresh_staged_on_update then
-    bcache.compare_text = git_obj:get_show_text(bcache:get_compare_rev())
+  local compare_rev = bcache:get_compare_rev()
+
+  local file_mode = compare_rev == 'FILE'
+
+  if not bcache.compare_text or config._refresh_staged_on_update or file_mode then
+    bcache.compare_text = git_obj:get_show_text(compare_rev)
     M.buf_check(bufnr, true)
   end
 
@@ -443,7 +479,7 @@ M.update = throttle_by_id(function(bufnr)
   bcache.hunks = run_diff(bcache.compare_text, buftext)
   M.buf_check(bufnr)
 
-  if config._signs_staged_enable then
+  if config._signs_staged_enable and not file_mode then
     if not bcache.compare_text_head or config._refresh_staged_on_update then
       local staged_compare_rev = bcache.commit and string.format('%s^', bcache.commit) or 'HEAD'
       bcache.compare_text_head = git_obj:get_show_text(staged_compare_rev)
@@ -480,7 +516,7 @@ M.update = throttle_by_id(function(bufnr)
 
   update_cnt = update_cnt + 1
 
-  dprintf('updates: %s, jobs: %s', update_cnt, subprocess.job_cnt)
+  dprintf('updates: %s, jobs: %s', update_cnt, system.job_cnt)
 end, true)
 
 --- @param bufnr integer
